@@ -8,22 +8,39 @@ import (
 // Runtime 是平台统一入口。实例拥有连接，调用方须持续读取 Events 并在结束时 Close。
 // 同一会话应等待当前轮次完成后再提交下一轮；取消请求等待不等于中断推理。
 type Runtime interface {
+	// Initialize 完成与服务端的初始化握手。
 	Initialize(context.Context, ClientInfo) (InitializeResponse, error)
+	// StartSession 创建新的会话。
 	StartSession(context.Context, SessionOptions) (Session, error)
+	// ResumeSession 恢复已有会话以继续对话。
 	ResumeSession(context.Context, ResumeSessionParams) (Session, error)
+	// ReadSession 读取会话信息及所需的历史轮次。
 	ReadSession(context.Context, ReadSessionParams) (Session, error)
+	// GetSessionStatus 查询会话当前的运行状态。
 	GetSessionStatus(context.Context, string) (SessionStatus, error)
+	// ListSessions 分页查询会话列表。
 	ListSessions(context.Context, ListSessionsParams) (SessionPage, error)
+	// ArchiveSession 归档会话并保留历史记录。
 	ArchiveSession(context.Context, string) error
+	// UnsubscribeSession 取消当前连接对会话的订阅。
 	UnsubscribeSession(context.Context, string) (UnsubscribeStatus, error)
+	// UnarchiveSession 恢复已归档的会话。
 	UnarchiveSession(context.Context, string) (Session, error)
+	// ListTurns 分页查询会话中的轮次信息。
 	ListTurns(context.Context, ListTurnsParams) (TurnPage, error)
+	// StartTurn 提交输入并启动新的对话轮次。
 	StartTurn(context.Context, StartTurnParams) (Turn, error)
+	// InterruptTurn 请求中断正在执行的轮次。
 	InterruptTurn(context.Context, InterruptTurnParams) error
+	// Events 获取内容输出及必要的生命周期事件。
 	Events() <-chan Event
+	// Respond 回复服务端发起的请求。
 	Respond(json.RawMessage, any, *ResponseError) error
+	// Done 获取连接终止时关闭的通知通道。
 	Done() <-chan struct{}
+	// Err 获取连接终止的原因。
 	Err() error
+	// Close 关闭连接并释放运行时资源。
 	Close() error
 }
 
