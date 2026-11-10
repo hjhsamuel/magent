@@ -46,6 +46,13 @@ func (r *Runtime) forwardEvents() {
 func convertEvent(m Message) (base.Event, error) {
 	var e base.Event
 	switch m.Method {
+	case "thread/closed":
+		var p ThreadClosedNotification
+		if err := json.Unmarshal(m.Params, &p); err != nil {
+			return e, err
+		}
+		e.Type = base.EventSessionClosed
+		e.SessionID = p.ThreadID
 	case "turn/completed":
 		var p TurnNotification
 		if err := json.Unmarshal(m.Params, &p); err != nil {

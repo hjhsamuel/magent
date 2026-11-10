@@ -195,3 +195,59 @@ func (r *Runtime) InterruptTurn(ctx context.Context, p base.InterruptTurnParams)
 		&EmptyResponse{},
 	)
 }
+
+// UnsubscribeSession 取消当前连接对会话的订阅，不删除历史，也不关闭连接。
+// 返回值以 RPC 响应为准；thread/closed 通知独立转换为 EventSessionClosed。
+// 需要再次使用会话时调用 ResumeSession。
+func (r *Runtime) UnsubscribeSession(ctx context.Context, id string) (base.UnsubscribeStatus, error) {
+	var out ThreadUnsubscribeResponse
+	err := r.client.Call(ctx, "thread/unsubscribe", ThreadIDParams{ThreadID: id}, &out)
+	return base.UnsubscribeStatus(out.Status), err
+}
+
+// GetSessionStatus 查询服务器当前状态，不加载历史轮次，不恢复会话或建立订阅。
+// 不存在的会话及服务端错误通过 error 返回；空状态不推断为空闲状态。
+func (r *Runtime) GetSessionStatus(ctx context.Context, id string) (base.SessionStatus, error) {
+	var out ThreadResponse
+	if err := r.client.Call(
+		ctx,
+		"thread/read",
+		ThreadReadParams{
+			ThreadID:     id,
+			IncludeTurns: false,
+		},
+		&out,
+	); err != nil {
+		return base.SessionStatus{}, err
+	}
+	return sessionStatus(out.Thread.Status), nil
+}
+
+// ListTurns 查询会话的轮次分页，不加载整个会话历史。
+func (r *Runtime) ListTurns(ctx context.Context, p base.ListTurnsParams) (base.TurnPage, error) {
+	var out ThreadTurnsListResponse
+	err := r.client.Call(
+		ctx,
+		"thread/turns/list",
+		ThreadTurnsListParams{
+			ThreadID:      p.SessionID,
+			Cursor:        p.Cursor,
+			Limit:         p.Limit,
+			SortDirection: string(p.SortDirection),
+			ItemsView:     string(p.ItemsView),
+		},
+		&out,
+	)
+	if err != nil {
+		return base.TurnPage{}, err
+	}
+	page := base.TurnPage{
+		Turns:           make([]base.Turn, len(out.Data)),
+		NextCursor:      out.NextCursor,
+		BackwardsCursor: out.BackwardsCursor,
+	}
+	for i, t := range out.Data {
+		page.Turns[i] = turn(t)
+	}
+	return page, nil
+}

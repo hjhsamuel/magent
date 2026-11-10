@@ -12,9 +12,12 @@ type Runtime interface {
 	StartSession(context.Context, SessionOptions) (Session, error)
 	ResumeSession(context.Context, ResumeSessionParams) (Session, error)
 	ReadSession(context.Context, ReadSessionParams) (Session, error)
+	GetSessionStatus(context.Context, string) (SessionStatus, error)
 	ListSessions(context.Context, ListSessionsParams) (SessionPage, error)
 	ArchiveSession(context.Context, string) error
+	UnsubscribeSession(context.Context, string) (UnsubscribeStatus, error)
 	UnarchiveSession(context.Context, string) (Session, error)
+	ListTurns(context.Context, ListTurnsParams) (TurnPage, error)
 	StartTurn(context.Context, StartTurnParams) (Turn, error)
 	InterruptTurn(context.Context, InterruptTurnParams) error
 	Events() <-chan Event
@@ -66,6 +69,7 @@ type SessionPage struct {
 
 // Session 的时间字段为 Unix 秒，历史轮次按服务端返回顺序排列。
 type Session struct {
+	Status                        SessionStatus
 	ID, Preview, WorkingDirectory string
 	CreatedAt, UpdatedAt          int64
 	Turns                         []Turn
@@ -90,9 +94,13 @@ type InterruptTurnParams struct {
 }
 
 type Turn struct {
-	ID, Status string
-	Items      []Item
-	Error      *TurnError
+	// 时间戳单位为秒；耗时单位为毫秒，nil 表示服务器未提供。
+	StartedAt, CompletedAt, DurationMs *int64
+	RootTurnID                         *string
+	ItemsView                          TurnItemsView
+	ID, Status                         string
+	Items                              []Item
+	Error                              *TurnError
 }
 
 type TurnError struct {
@@ -109,6 +117,8 @@ type Item struct {
 type EventType string
 
 const (
+	// EventSessionClosed 表示当前连接不再接收该会话通知，不代表会话被删除。
+	EventSessionClosed     EventType = "session.closed"
 	EventTurnCompleted     EventType = "turn.completed"
 	EventThinkingDelta     EventType = "thinking.delta"
 	EventTextDelta         EventType = "text.delta"
@@ -133,4 +143,72 @@ type ResponseError struct {
 	Code    int
 	Message string
 	Data    json.RawMessage
+}
+
+// UnsubscribeStatus 表示取消订阅请求的处理结果；后两种状态表示无需重复退订。
+type UnsubscribeStatus string
+
+const (
+	Unsubscribed  UnsubscribeStatus = "unsubscribed"
+	NotSubscribed UnsubscribeStatus = "notSubscribed"
+	NotLoaded     UnsubscribeStatus = "notLoaded"
+)
+
+// SessionStatus 是服务器返回的会话运行状态快照，不代表持久化历史是否存在。
+// Type 为空表示服务器未提供状态，不能当作 idle。
+type SessionStatus struct {
+	Type        SessionState
+	ActiveFlags []SessionActiveFlag
+}
+
+// SessionState 与轮次状态独立；notLoaded 不等于会话不存在。
+type SessionState string
+
+const (
+	SessionNotLoaded   SessionState = "notLoaded"
+	SessionIdle        SessionState = "idle"
+	SessionActive      SessionState = "active"
+	SessionSystemError SessionState = "systemError"
+)
+
+// SessionActiveFlag 说明运行中的会话正在等待什么；空列表表示没有等待标记。
+type SessionActiveFlag string
+
+const (
+	SessionWaitingOnApproval  SessionActiveFlag = "waitingOnApproval"
+	SessionWaitingOnUserInput SessionActiveFlag = "waitingOnUserInput"
+)
+
+// ListTurnsParams 查询指定会话的轮次；游标为不透明值，须原样传回。
+// 空排序默认倒序，空 ItemsView 默认摘要；Limit 为 nil 时使用服务端默认页大小。
+type ListTurnsParams struct {
+	SessionID     string
+	Cursor        string
+	Limit         *uint32
+	SortDirection SortDirection
+	ItemsView     TurnItemsView
+}
+
+type SortDirection string
+
+const (
+	SortAscending  SortDirection = "asc"
+	SortDescending SortDirection = "desc"
+)
+
+// TurnItemsView 区分未加载、摘要与完整历史，避免将空 Items 误认为没有消息。
+type TurnItemsView string
+
+const (
+	TurnItemsNotLoaded TurnItemsView = "notLoaded"
+	TurnItemsSummary   TurnItemsView = "summary"
+	TurnItemsFull      TurnItemsView = "full"
+)
+
+// TurnPage 保留服务器顺序，不在客户端重新排序。
+// BackwardsCursor 用于反转 SortDirection 后查询，会再次包含锚点轮次以获取更新。
+type TurnPage struct {
+	Turns           []Turn
+	NextCursor      *string
+	BackwardsCursor *string
 }

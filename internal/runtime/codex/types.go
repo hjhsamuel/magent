@@ -82,12 +82,13 @@ type ThreadResponse struct {
 
 // Thread 是服务器持久化的会话；历史由服务器维护。
 type Thread struct {
-	ID        string `json:"id"`
-	Preview   string `json:"preview"`
-	Cwd       string `json:"cwd"`
-	CreatedAt int64  `json:"createdAt"`
-	UpdatedAt int64  `json:"updatedAt"`
-	Turns     []Turn `json:"turns"`
+	Status    ThreadStatus `json:"status"`
+	ID        string       `json:"id"`
+	Preview   string       `json:"preview"`
+	Cwd       string       `json:"cwd"`
+	CreatedAt int64        `json:"createdAt"`
+	UpdatedAt int64        `json:"updatedAt"`
+	Turns     []Turn       `json:"turns"`
 }
 
 // Input 支持文本、远程图片及本地图片输入。
@@ -114,10 +115,15 @@ type TurnResponse struct {
 }
 
 type Turn struct {
-	ID     string     `json:"id"`
-	Status string     `json:"status"`
-	Items  []Item     `json:"items"`
-	Error  *TurnError `json:"error"`
+	StartedAt   *int64     `json:"startedAt"`
+	CompletedAt *int64     `json:"completedAt"`
+	DurationMs  *int64     `json:"durationMs"`
+	RootTurnID  *string    `json:"rootTurnId"`
+	ItemsView   string     `json:"itemsView"`
+	ID          string     `json:"id"`
+	Status      string     `json:"status"`
+	Items       []Item     `json:"items"`
+	Error       *TurnError `json:"error"`
 }
 
 type TurnError struct {
@@ -177,4 +183,36 @@ func (i *Item) UnmarshalJSON(data []byte) error {
 	}
 
 	return json.Unmarshal(wire.Content, &i.Content)
+}
+
+// ThreadUnsubscribeResponse 映射取消订阅响应，保留服务器返回的具体状态。
+type ThreadUnsubscribeResponse struct {
+	Status string `json:"status"`
+}
+
+// ThreadClosedNotification 表示当前连接上的会话订阅已关闭。
+type ThreadClosedNotification struct {
+	ThreadID string `json:"threadId"`
+}
+
+// ThreadStatus 映射 thread.status 的判别联合，保留未知状态值以兼容协议扩展。
+type ThreadStatus struct {
+	Type        string   `json:"type"`
+	ActiveFlags []string `json:"activeFlags,omitempty"`
+}
+
+// ThreadTurnsListParams 映射轮次分页查询，不会恢复或订阅会话。
+type ThreadTurnsListParams struct {
+	ThreadID      string  `json:"threadId"`
+	Cursor        string  `json:"cursor,omitempty"`
+	Limit         *uint32 `json:"limit,omitempty"`
+	SortDirection string  `json:"sortDirection,omitempty"`
+	ItemsView     string  `json:"itemsView,omitempty"`
+}
+
+// ThreadTurnsListResponse 包含正向续页及反向查询游标。
+type ThreadTurnsListResponse struct {
+	Data            []Turn  `json:"data"`
+	NextCursor      *string `json:"nextCursor"`
+	BackwardsCursor *string `json:"backwardsCursor"`
 }
