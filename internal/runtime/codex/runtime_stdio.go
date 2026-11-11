@@ -26,8 +26,8 @@ func (t *streamTransport) WriteMessage(m Message) error {
 	return t.encoder.Encode(m)
 }
 
-// NewRuntime 创建 stdio Runtime，接管流的所有权；使用前须 Initialize。
-func NewRuntime(conn io.ReadWriteCloser) *Runtime {
+// NewStdRuntime 创建 stdio Runtime，接管流的所有权；使用前须 Initialize。
+func NewStdRuntime(conn io.ReadWriteCloser) *Runtime {
 	scanner := bufio.NewScanner(conn)
 	scanner.Buffer(make([]byte, 4096), maxMessageBytes)
 	return newRuntime(&streamTransport{
