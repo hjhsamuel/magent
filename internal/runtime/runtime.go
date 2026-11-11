@@ -22,8 +22,6 @@ type Runtime interface {
 	ListSessions(context.Context, ListSessionsParams) (SessionPage, error)
 	// ArchiveSession 归档会话并保留历史记录。
 	ArchiveSession(context.Context, string) error
-	// UnsubscribeSession 取消当前连接对会话的订阅。
-	UnsubscribeSession(context.Context, string) (UnsubscribeStatus, error)
 	// UnarchiveSession 恢复已归档的会话。
 	UnarchiveSession(context.Context, string) (Session, error)
 	// ListTurns 分页查询会话中的轮次信息。
@@ -40,7 +38,7 @@ type Runtime interface {
 	Done() <-chan struct{}
 	// Err 获取连接终止的原因。
 	Err() error
-	// Close 关闭连接并释放运行时资源。
+	// Close 尝试退订当前连接的会话，再关闭连接并释放资源；退订失败仍关闭连接。
 	Close() error
 }
 
@@ -134,7 +132,8 @@ type Item struct {
 type EventType string
 
 const (
-	// EventSessionClosed 表示当前连接不再接收该会话通知，不代表会话被删除。
+	EventApprovalRequested EventType = "approval.requested"
+	EventRequestResolved   EventType = "request.resolved"
 	EventSessionClosed     EventType = "session.closed"
 	EventTurnCompleted     EventType = "turn.completed"
 	EventThinkingDelta     EventType = "thinking.delta"
@@ -148,6 +147,11 @@ const (
 // 思考内容仅包含服务端公开提供的内容。Status 和 Error 仅用于轮次结束。
 // 连接异常由 Done 和 Err 表达，不伪造成功结束信号。
 type Event struct {
+	// Request contains an approval request; reply on the same runtime using
+	// Respond(Request.ID, result, nil). No decision is made automatically.
+	Request *ApprovalRequest
+	// RequestID identifies a request cleared by the server (including cancellation).
+	RequestID                 json.RawMessage
 	Type                      EventType
 	SessionID, TurnID, ItemID string
 	Text                      string
@@ -155,21 +159,35 @@ type Event struct {
 	Error                     *TurnError
 }
 
+// ApprovalRequest preserves provider-specific fields, including permission
+// scopes and available decisions. ID must retain its original JSON type.
+type ApprovalRequest struct {
+	ID     json.RawMessage
+	Method string
+	Params json.RawMessage
+}
+
+// ApprovalResponse is for command execution and file change approvals.
+// Permissions requests instead require a provider-specific permissions payload.
+type ApprovalResponse struct {
+	Decision ApprovalDecision `json:"decision"`
+}
+
+type ApprovalDecision string
+
+const (
+	ApprovalAccept           ApprovalDecision = "accept"
+	ApprovalAcceptForSession ApprovalDecision = "acceptForSession"
+	ApprovalDecline          ApprovalDecision = "decline"
+	ApprovalCancel           ApprovalDecision = "cancel"
+)
+
 // ResponseError 用于回复无法处理的服务端请求。
 type ResponseError struct {
 	Code    int
 	Message string
 	Data    json.RawMessage
 }
-
-// UnsubscribeStatus 表示取消订阅请求的处理结果；后两种状态表示无需重复退订。
-type UnsubscribeStatus string
-
-const (
-	Unsubscribed  UnsubscribeStatus = "unsubscribed"
-	NotSubscribed UnsubscribeStatus = "notSubscribed"
-	NotLoaded     UnsubscribeStatus = "notLoaded"
-)
 
 // SessionStatus 是服务器返回的会话运行状态快照，不代表持久化历史是否存在。
 // Type 为空表示服务器未提供状态，不能当作 idle。

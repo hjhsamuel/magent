@@ -13,7 +13,14 @@ func (r *Runtime) forwardEvents() {
 	defer close(r.events)
 
 	for m := range r.client.events {
-		if len(m.ID) > 0 {
+		// Drain notifications while closing so unsubscribe responses can arrive
+		// even when the caller has stopped consuming Events.
+		select {
+		case <-r.closing:
+			continue
+		default:
+		}
+		if len(m.ID) > 0 && !isApprovalMethod(m.Method) {
 			if err := r.client.Respond(
 				m.ID,
 				nil,
@@ -36,6 +43,7 @@ func (r *Runtime) forwardEvents() {
 
 		select {
 		case r.events <- e:
+		case <-r.closing:
 		case <-r.Done():
 			return
 		}
@@ -46,6 +54,37 @@ func (r *Runtime) forwardEvents() {
 func convertEvent(m Message) (base.Event, error) {
 	var e base.Event
 	switch m.Method {
+	case "item/commandExecution/requestApproval", "item/fileChange/requestApproval", "item/permissions/requestApproval":
+		// Notifications cannot be answered and must not create approval prompts.
+		if len(m.ID) == 0 || string(m.ID) == "null" {
+			return e, nil
+		}
+
+		var p struct {
+			ThreadID string `json:"threadId"`
+			TurnID   string `json:"turnId"`
+			ItemID   string `json:"itemId"`
+		}
+		if err := json.Unmarshal(m.Params, &p); err != nil {
+			return e, err
+		}
+
+		e.Type = base.EventApprovalRequested
+		e.SessionID, e.TurnID, e.ItemID = p.ThreadID, p.TurnID, p.ItemID
+		e.Request = &base.ApprovalRequest{
+			ID:     append(json.RawMessage(nil), m.ID...),
+			Method: m.Method,
+			Params: append(json.RawMessage(nil), m.Params...),
+		}
+	case "serverRequest/resolved":
+		var p struct {
+			ThreadID  string          `json:"threadId"`
+			RequestID json.RawMessage `json:"requestId"`
+		}
+		if err := json.Unmarshal(m.Params, &p); err != nil {
+			return e, err
+		}
+		e.Type, e.SessionID, e.RequestID = base.EventRequestResolved, p.ThreadID, p.RequestID
 	case "thread/closed":
 		var p ThreadClosedNotification
 		if err := json.Unmarshal(m.Params, &p); err != nil {
@@ -103,4 +142,13 @@ func convertEvent(m Message) (base.Event, error) {
 		e.ItemID = p.Item.ID
 	}
 	return e, nil
+}
+
+func isApprovalMethod(method string) bool {
+	switch method {
+	case "item/commandExecution/requestApproval", "item/fileChange/requestApproval", "item/permissions/requestApproval":
+		return true
+	default:
+		return false
+	}
 }

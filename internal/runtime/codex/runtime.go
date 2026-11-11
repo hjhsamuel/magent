@@ -3,15 +3,24 @@ package codex
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"sync"
+	"time"
 
 	base "github.com/hjhsamuel/magent/internal/runtime"
 )
 
 // Runtime 将 Codex 协议转换为平台统一接口，客户端仅在内部使用。
 type Runtime struct {
-	client *client
-	events chan base.Event
+	client       *client
+	events       chan base.Event
+	mu           sync.Mutex
+	sessions     map[string]struct{}
+	closing      chan struct{}
+	closeOnce    sync.Once
+	closeErr     error
+	sessionCalls sync.WaitGroup
 }
 
 // newRuntime 是两种传输共用的装配入口，不承担拨号和消息分帧。
@@ -24,8 +33,10 @@ func newRuntime(conn messageTransport) *Runtime {
 		writes:  make(chan writeRequest, 64),
 	}
 	r := &Runtime{
-		client: c,
-		events: make(chan base.Event),
+		client:   c,
+		events:   make(chan base.Event),
+		sessions: make(map[string]struct{}),
+		closing:  make(chan struct{}),
 	}
 
 	go c.readLoop()
@@ -44,6 +55,10 @@ func (r *Runtime) Initialize(ctx context.Context, info base.ClientInfo) (base.In
 			Version: info.Version,
 		},
 	)
+	if err != nil {
+		return base.InitializeResponse{}, err
+	}
+
 	return base.InitializeResponse{UserAgent: out.UserAgent}, err
 }
 
@@ -61,8 +76,37 @@ func (r *Runtime) Err() error {
 }
 
 func (r *Runtime) Close() error {
-	r.client.stop(io.ErrClosedPipe)
-	return nil
+	r.closeOnce.Do(func() {
+		r.mu.Lock()
+		close(r.closing)
+		r.mu.Unlock()
+		r.sessionCalls.Wait()
+		defer r.client.stop(io.ErrClosedPipe)
+		select {
+		case <-r.Done():
+			return
+		default:
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		r.mu.Lock()
+		ids := make([]string, 0, len(r.sessions))
+		for id := range r.sessions {
+			ids = append(ids, id)
+		}
+		r.sessions = nil
+		r.mu.Unlock()
+
+		for _, id := range ids {
+			var out ThreadUnsubscribeResponse
+			if err := r.client.Call(ctx, "thread/unsubscribe", ThreadIDParams{ThreadID: id}, &out); err != nil {
+				r.closeErr = errors.Join(r.closeErr, err)
+			}
+		}
+	})
+	return r.closeErr
 }
 
 func (r *Runtime) Respond(id json.RawMessage, result any, e *base.ResponseError) error {
@@ -92,8 +136,37 @@ func threadOptions(p base.SessionOptions) ThreadParams {
 }
 
 func (r *Runtime) sessionCall(ctx context.Context, method string, p any) (base.Session, error) {
+	if method != "thread/start" && method != "thread/resume" {
+		var out ThreadResponse
+		err := r.client.Call(ctx, method, p, &out)
+		return session(out.Thread), err
+	}
+	r.mu.Lock()
+	select {
+	case <-r.closing:
+		r.mu.Unlock()
+		return base.Session{}, io.ErrClosedPipe
+	default:
+	}
+	r.sessionCalls.Add(1)
+	r.mu.Unlock()
+	defer r.sessionCalls.Done()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() {
+		select {
+		case <-r.closing:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
 	var out ThreadResponse
 	err := r.client.Call(ctx, method, p, &out)
+	if err == nil && out.Thread.ID != "" {
+		r.mu.Lock()
+		r.sessions[out.Thread.ID] = struct{}{}
+		r.mu.Unlock()
+	}
 	return session(out.Thread), err
 }
 
@@ -194,15 +267,6 @@ func (r *Runtime) InterruptTurn(ctx context.Context, p base.InterruptTurnParams)
 		},
 		&EmptyResponse{},
 	)
-}
-
-// UnsubscribeSession 取消当前连接对会话的订阅，不删除历史，也不关闭连接。
-// 返回值以 RPC 响应为准；thread/closed 通知独立转换为 EventSessionClosed。
-// 需要再次使用会话时调用 ResumeSession。
-func (r *Runtime) UnsubscribeSession(ctx context.Context, id string) (base.UnsubscribeStatus, error) {
-	var out ThreadUnsubscribeResponse
-	err := r.client.Call(ctx, "thread/unsubscribe", ThreadIDParams{ThreadID: id}, &out)
-	return base.UnsubscribeStatus(out.Status), err
 }
 
 // GetSessionStatus 查询服务器当前状态，不加载历史轮次，不恢复会话或建立订阅。
