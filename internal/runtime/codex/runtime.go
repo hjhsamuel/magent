@@ -180,6 +180,7 @@ func (r *Runtime) ResumeSession(ctx context.Context, p base.ResumeSessionParams)
 		"thread/resume",
 		ThreadResumeParams{
 			ThreadID:     p.SessionID,
+			ExcludeTurns: true,
 			ThreadParams: threadOptions(p.Options),
 		},
 	)

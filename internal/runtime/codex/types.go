@@ -69,7 +69,8 @@ type ThreadReadParams struct {
 }
 
 type ThreadResumeParams struct {
-	ThreadID string `json:"threadId"`
+	ThreadID     string `json:"threadId"`
+	ExcludeTurns bool   `json:"excludeTurns"`
 	ThreadParams
 }
 

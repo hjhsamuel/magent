@@ -24,7 +24,7 @@ func (s *Service) Listen(
 	auth *utils.Auth,
 	sessionId string,
 ) error {
-	id, r, err := s.initRuntime(ctx, auth, sessionId)
+	id, r, err := s.startSession(ctx, auth, sessionId)
 	if err != nil {
 		return err
 	}
@@ -100,6 +100,28 @@ Done:
 
 func (s *Service) initRuntime(
 	ctx context.Context,
+	node string,
+) (runtime.Runtime, error) {
+	// 初始化连接
+	r, err := codex.NewWebSocketRuntime(ctx, fmt.Sprintf("ws://%s", node), nil)
+	if err != nil {
+		return nil, err
+	}
+	_, err = r.Initialize(ctx, runtime.ClientInfo{
+		Name:    "magent",
+		Title:   "My Agent",
+		Version: "1.0.0",
+	})
+	if err != nil {
+		_ = r.Close()
+		return nil, fmt.Errorf("init connection: %w", err)
+	}
+
+	return r, nil
+}
+
+func (s *Service) startSession(
+	ctx context.Context,
 	auth *utils.Auth,
 	sessionId string,
 ) (string, *runtime.ManagedRuntime, error) {
@@ -122,17 +144,8 @@ func (s *Service) initRuntime(
 	}
 
 	// 初始化连接
-	r, err := codex.NewWebSocketRuntime(ctx, fmt.Sprintf("ws://%s", node), nil)
+	r, err := s.initRuntime(ctx, node)
 	if err != nil {
-		return "", nil, err
-	}
-	_, err = r.Initialize(ctx, runtime.ClientInfo{
-		Name:    "magent",
-		Title:   "My Agent",
-		Version: "1.0.0",
-	})
-	if err != nil {
-		_ = r.Close()
 		return "", nil, fmt.Errorf("init connection: %w", err)
 	}
 
@@ -177,7 +190,7 @@ func (s *Service) initRuntime(
 		sid, err := s.store.CreateSession(context.Background(), &schema.Session{
 			Name:      "",
 			User:      fmt.Sprintf("%v", auth.Raw["id"]),
-			Status:    schema.SessionStateCompleted,
+			Status:    schema.SessionStateInit,
 			Node:      node,
 			RunId:     rs.ID,
 			CreatedAt: curTime,

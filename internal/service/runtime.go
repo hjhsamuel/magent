@@ -31,23 +31,39 @@ func (s *Service) Chat(
 		return err
 	}
 
-	if obj.Status != schema.SessionStateCompleted {
+	if obj.Status != schema.SessionStateRunning {
 		return errors.New("already running")
 	}
 
-	mr, exists := s.manager.Get(sessionId)
-	if !exists {
-		return errors.New("sse not connected")
-	}
-	_, err = mr.StartTurn(context.Background(), runtime.StartTurnParams{
+	params := runtime.StartTurnParams{
 		SessionID: obj.RunId,
 		Input: []runtime.Input{
 			{Type: "text", Text: content},
 		},
-	})
-	if err != nil {
-		return err
 	}
+	if mr, exists := s.manager.Get(sessionId); exists {
+		_, err = mr.StartTurn(context.Background(), params)
+		if err != nil {
+			return err
+		}
+	} else {
+		r, err := s.initRuntime(context.Background(), obj.Node)
+		if err != nil {
+			return err
+		}
+		defer r.Close()
+
+		_, err = r.StartTurn(context.Background(), params)
+		if err != nil {
+			return err
+		}
+	}
+
+	_ = s.store.UpdateSession(
+		context.Background(),
+		bson.M{"_id": sid},
+		bson.M{"$set": bson.M{"status": schema.SessionStateRunning}},
+	)
 
 	return nil
 }

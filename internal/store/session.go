@@ -37,3 +37,12 @@ func (d *Store) CreateSession(
 	id := result.InsertedID.(bson.ObjectID)
 	return id, nil
 }
+
+func (d *Store) UpdateSession(
+	ctx context.Context,
+	filter bson.M,
+	update bson.M,
+) error {
+	_, err := d.getCollection(schema.SessionCollection).UpdateOne(ctx, filter, update)
+	return err
+}

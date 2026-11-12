@@ -22,6 +22,7 @@ type Session struct {
 type SessionState int
 
 const (
-	SessionStateRunning SessionState = iota
+	SessionStateInit SessionState = iota
+	SessionStateRunning
 	SessionStateCompleted
 )
