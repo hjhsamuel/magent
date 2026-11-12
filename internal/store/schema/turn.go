@@ -11,6 +11,7 @@ const TurnCollection = "magent_turn"
 type Turn struct {
 	ID        bson.ObjectID `bson:"_id,omitempty"`
 	Session   bson.ObjectID `bson:"session"`
+	TurnID    string        `bson:"turn_id"` // 映射到 runtime 的真实 turn id
 	CreatedAt time.Time     `bson:"created_at"`
 	Messages  []*Message    `bson:"messages"`
 }

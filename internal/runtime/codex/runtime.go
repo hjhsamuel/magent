@@ -28,7 +28,7 @@ func newRuntime(conn messageTransport) *Runtime {
 	c := &client{
 		conn:    conn,
 		pending: make(map[string]chan Message),
-		events:  make(chan Message, 256),
+		events:  make(chan Message, 1024),
 		done:    make(chan struct{}),
 		writes:  make(chan writeRequest, 64),
 	}

@@ -11,8 +11,12 @@ const SessionCollection = "magent_session"
 type Session struct {
 	ID        bson.ObjectID `bson:"_id,omitempty"`
 	Name      string        `bson:"name"`
-	Status    SessionState  `bson:"state"`
+	User      string        `bson:"user"`
+	Status    SessionState  `bson:"status"`
+	Node      string        `bson:"node"`   // node server
+	RunId     string        `bson:"run_id"` // 映射到 runtime 的真实 id
 	CreatedAt time.Time     `bson:"created_at"`
+	UpdatedAt time.Time     `bson:"updated_at"`
 }
 
 type SessionState int

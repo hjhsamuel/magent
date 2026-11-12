@@ -25,7 +25,9 @@ type Manager struct {
 }
 
 func NewRuntimeManager() *Manager {
-	return &Manager{}
+	return &Manager{
+		shards: [16]runtimeShard{},
+	}
 }
 
 func (m *Manager) shard(id string) *runtimeShard {
@@ -57,7 +59,7 @@ func (m *Manager) Register(id string, r Runtime) (*ManagedRuntime, error) {
 
 	c := &ManagedRuntime{
 		Runtime: r,
-		events:  make(chan Event, 256),
+		events:  make(chan Event, 1024),
 		stop:    make(chan struct{}),
 		done:    make(chan struct{}),
 	}

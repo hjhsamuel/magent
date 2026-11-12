@@ -14,7 +14,9 @@ type Mcp struct {
 	Url       string        `bson:"url"`
 	Status    ToolState     `bson:"status"`
 	Token     string        `bson:"token"` // bearer token
+	Creator   string        `bson:"creator"`
 	CreatedAt time.Time     `bson:"created_at"`
+	UpdatedAt time.Time     `bson:"updated_at"`
 }
 
 type ToolState int
