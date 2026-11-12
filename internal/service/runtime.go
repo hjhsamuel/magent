@@ -31,7 +31,7 @@ func (s *Service) Chat(
 		return err
 	}
 
-	if obj.Status != schema.SessionStateRunning {
+	if obj.Status == schema.SessionStateRunning {
 		return errors.New("already running")
 	}
 
