@@ -19,5 +19,5 @@ type SSEPayload struct {
 
 type ApproveEvent struct {
 	ID      string `json:"id"`
-	Content string `json:"content"`
+	Content string `json:"content"` // Markdown with escaped dynamic values.
 }

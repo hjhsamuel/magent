@@ -5,6 +5,14 @@ import (
 	"fmt"
 )
 
+// ErrorNotification reports a turn error, including recoverable retry failures.
+type ErrorNotification struct {
+	ThreadID  string    `json:"threadId"`
+	TurnID    string    `json:"turnId"`
+	Error     TurnError `json:"error"`
+	WillRetry bool      `json:"willRetry"`
+}
+
 // Message 是双向 JSON-RPC 消息信封；协议省略 jsonrpc 字段。
 // ID 保留原始 JSON，以同时支持服务器使用的字符串和整数标识。
 type Message struct {
@@ -215,4 +223,34 @@ type ThreadTurnsListResponse struct {
 	Data            []Turn  `json:"data"`
 	NextCursor      *string `json:"nextCursor"`
 	BackwardsCursor *string `json:"backwardsCursor"`
+}
+
+// ApprovalParams contains the user-facing fields shared by Codex approval requests.
+// The original request retains all other protocol fields for approval responses.
+type ApprovalParams struct {
+	Reason                 string                  `json:"reason"`
+	Command                string                  `json:"command"`
+	Cwd                    string                  `json:"cwd"`
+	GrantRoot              string                  `json:"grantRoot"`
+	NetworkApprovalContext *NetworkApprovalContext `json:"networkApprovalContext"`
+	Permissions            *ApprovalPermissions    `json:"permissions"`
+}
+
+type NetworkApprovalContext struct {
+	Host     string `json:"host"`
+	Protocol string `json:"protocol"`
+}
+
+type ApprovalPermissions struct {
+	Network    *ApprovalNetworkPermissions    `json:"network"`
+	FileSystem *ApprovalFileSystemPermissions `json:"fileSystem"`
+}
+
+type ApprovalNetworkPermissions struct {
+	Enabled bool `json:"enabled"`
+}
+
+type ApprovalFileSystemPermissions struct {
+	Read  []string `json:"read"`
+	Write []string `json:"write"`
 }

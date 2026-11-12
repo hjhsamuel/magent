@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -46,6 +47,8 @@ func (s *Service) Listen(
 		select {
 		case e := <-r.Events():
 			switch e.Type {
+			case runtime.EventError:
+				ctx.SSEvent(string(signal.SSEError), signal.SSEPayload{Data: e.Error.Message})
 			case runtime.EventThinkingDelta:
 				ctx.SSEvent(string(signal.SSEReasoning), signal.SSEPayload{Data: e.Text})
 			case runtime.EventTextDelta:
@@ -53,30 +56,32 @@ func (s *Service) Listen(
 			case runtime.EventThinkingCompleted, runtime.EventTextCompleted:
 				ctx.SSEvent(string(signal.SSEComplete), nil)
 			case runtime.EventTurnCompleted:
-				if index != 0 {
-					ctx.Writer.Flush()
-				}
-
 				_ = s.store.TurnComplete(context.Background(), e.SessionID, e.TurnID, e.Text)
-				ctx.SSEvent(string(signal.SSEEnd), nil)
+				goto Done
 			case runtime.EventApprovalRequested:
-				// TODO
+				if e.Request == nil {
+					continue
+				}
+				requestID := string(e.Request.ID)
+				if len(e.Request.ID) > 0 && e.Request.ID[0] == '"' {
+					_ = json.Unmarshal(e.Request.ID, &requestID)
+				}
 				ctx.SSEvent(string(signal.SSEApprove), signal.SSEPayload{
 					Data: signal.ApproveEvent{
-						//ID: e.
+						ID:      requestID,
+						Content: e.Text,
 					},
 				})
 			case runtime.EventSessionClosed:
-				if index != 0 {
-					ctx.Writer.Flush()
-				}
-				return nil
+				goto Done
 			default:
 				continue
 			}
 
 			index += 1
 		case <-r.Done():
+			goto Done
+		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
 			if index != 0 {
@@ -85,6 +90,11 @@ func (s *Service) Listen(
 			}
 		}
 	}
+
+Done:
+	ctx.SSEvent(string(signal.SSEEnd), nil)
+	ctx.Writer.Flush()
+	return nil
 }
 
 func (s *Service) initRuntime(
@@ -163,7 +173,6 @@ func (s *Service) initRuntime(
 		}
 
 		curTime := time.Now()
-		// TODO
 		sid, err := s.store.CreateSession(context.Background(), &schema.Session{
 			Name:      "",
 			User:      fmt.Sprintf("%v", auth.Raw["id"]),

@@ -132,6 +132,7 @@ type Item struct {
 type EventType string
 
 const (
+	EventError             EventType = "error"
 	EventApprovalRequested EventType = "approval.requested"
 	EventRequestResolved   EventType = "request.resolved"
 	EventSessionClosed     EventType = "session.closed"
@@ -144,7 +145,7 @@ const (
 
 // Event 的 Text 在增量事件中是 chunk，在完成事件中是单个 Item 的全文。
 // 同一轮可包含多个思考或正文 Item，使用 ItemID 区分；全文不应再次追加到 chunk。
-// 思考内容仅包含服务端公开提供的内容。Status 和 Error 仅用于轮次结束。
+// 思考内容仅包含服务端公开提供的内容。Status 用于轮次结束，Error 用于错误通知和轮次结束。
 // 连接异常由 Done 和 Err 表达，不伪造成功结束信号。
 type Event struct {
 	// Request contains an approval request; reply on the same runtime using
@@ -157,6 +158,7 @@ type Event struct {
 	Text                      string
 	Status                    string
 	Error                     *TurnError
+	WillRetry                 bool // Error notification will be retried by the provider.
 }
 
 // ApprovalRequest preserves provider-specific fields, including permission

@@ -54,6 +54,19 @@ func (r *Runtime) forwardEvents() {
 func convertEvent(m Message) (base.Event, error) {
 	var e base.Event
 	switch m.Method {
+	case "error":
+		var p ErrorNotification
+		if err := json.Unmarshal(m.Params, &p); err != nil {
+			return e, err
+		}
+
+		e.Type = base.EventError
+		e.SessionID, e.TurnID = p.ThreadID, p.TurnID
+		e.Error = &base.TurnError{
+			Message: p.Error.Message,
+			Details: p.Error.AdditionalDetails,
+		}
+		e.WillRetry = p.WillRetry
 	case "item/commandExecution/requestApproval", "item/fileChange/requestApproval", "item/permissions/requestApproval":
 		// Notifications cannot be answered and must not create approval prompts.
 		if len(m.ID) == 0 || string(m.ID) == "null" {
@@ -70,6 +83,11 @@ func convertEvent(m Message) (base.Event, error) {
 		}
 
 		e.Type = base.EventApprovalRequested
+		content, err := approvalContent(m.Method, m.Params)
+		if err != nil {
+			return e, err
+		}
+		e.Text = content
 		e.SessionID, e.TurnID, e.ItemID = p.ThreadID, p.TurnID, p.ItemID
 		e.Request = &base.ApprovalRequest{
 			ID:     append(json.RawMessage(nil), m.ID...),
