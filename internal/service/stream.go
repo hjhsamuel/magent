@@ -56,8 +56,9 @@ func (s *Service) Listen(
 			case runtime.EventThinkingCompleted, runtime.EventTextCompleted:
 				ctx.SSEvent(string(signal.SSEComplete), nil)
 			case runtime.EventTurnCompleted:
+				// 轮次结束不主动关闭连接
 				_ = s.store.TurnComplete(context.Background(), e.SessionID, e.TurnID, e.Text)
-				goto Done
+				ctx.SSEvent(string(signal.SSEEnd), nil)
 			case runtime.EventApprovalRequested:
 				if e.Request == nil {
 					continue
@@ -192,7 +193,8 @@ func (s *Service) initRuntime(
 	// 注册
 	mr, err := s.manager.Register(sessionId, r)
 	if err != nil {
-		_ = s.manager.Remove(sessionId)
+		_ = r.Close()
+		return "", nil, fmt.Errorf("already connected: %w", err)
 	}
 
 	return sessionId, mr, nil
