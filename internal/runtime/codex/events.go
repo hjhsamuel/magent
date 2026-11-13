@@ -67,6 +67,8 @@ func convertEvent(m Message) (base.Event, error) {
 			Details: p.Error.AdditionalDetails,
 		}
 		e.WillRetry = p.WillRetry
+	case "mcpServer/elicitation/request":
+		// TODO
 	case "item/commandExecution/requestApproval", "item/fileChange/requestApproval", "item/permissions/requestApproval":
 		// Notifications cannot be answered and must not create approval prompts.
 		if len(m.ID) == 0 || string(m.ID) == "null" {
@@ -121,7 +123,16 @@ func convertEvent(m Message) (base.Event, error) {
 		e.TurnID = p.Turn.ID
 		e.Status = p.Turn.Status
 		if p.Turn.Error != nil {
-			e.Error = &base.TurnError{Message: p.Turn.Error.Message, Details: p.Turn.Error.AdditionalDetails}
+			e.Error = &base.TurnError{
+				Message: p.Turn.Error.Message,
+				Details: p.Turn.Error.AdditionalDetails,
+			}
+		} else {
+			parts := make([]string, 0, len(p.Turn.Items))
+			for _, elem := range p.Turn.Items {
+				parts = append(parts, elem.Text)
+			}
+			e.Text = strings.Join(parts, "\n")
 		}
 	case "item/agentMessage/delta", "item/reasoning/summaryTextDelta", "item/reasoning/textDelta":
 		var p AgentMessageDelta

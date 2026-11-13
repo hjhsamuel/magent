@@ -54,6 +54,7 @@ func (s *Service) Listen(
 			case runtime.EventTextDelta:
 				ctx.SSEvent(string(signal.SSEContent), signal.SSEPayload{Data: e.Text})
 			case runtime.EventThinkingCompleted, runtime.EventTextCompleted:
+				// 不返回完整的中间数据，结束时只发送信号
 				ctx.SSEvent(string(signal.SSEComplete), nil)
 			case runtime.EventTurnCompleted:
 				// 轮次结束不主动关闭连接
