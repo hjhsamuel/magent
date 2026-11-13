@@ -1,5 +1,7 @@
 package signal
 
+import "encoding/json"
+
 type SSEChunkType string
 
 const (
@@ -18,6 +20,12 @@ type SSEPayload struct {
 }
 
 type ApproveEvent struct {
-	ID      string `json:"id"`
-	Content string `json:"content"` // Markdown with escaped dynamic values.
+	ID      string            `json:"id"`
+	Content string            `json:"content"` // Markdown with escaped dynamic values.
+	Raw     *RawApproveParams `json:"raw"`
+}
+
+type RawApproveParams struct {
+	Method string          `json:"method"`
+	Params json.RawMessage `json:"params"`
 }

@@ -72,6 +72,10 @@ func (s *Service) Listen(
 					Data: signal.ApproveEvent{
 						ID:      requestID,
 						Content: e.Text,
+						Raw: &signal.RawApproveParams{
+							Method: e.Request.Method,
+							Params: e.Request.Params,
+						},
 					},
 				})
 			case runtime.EventSessionClosed:

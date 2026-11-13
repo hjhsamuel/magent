@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -71,7 +72,7 @@ func (s *Service) Chat(
 func (s *Service) Approve(
 	auth *utils.Auth,
 	sessionId string,
-	id string,
+	id json.RawMessage,
 	content string,
 ) error {
 
