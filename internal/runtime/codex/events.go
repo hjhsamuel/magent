@@ -77,13 +77,14 @@ func convertEvent(m Message) (base.Event, error) {
 			ThreadID string `json:"threadId"`
 			TurnID   string `json:"turnId"`
 			ItemID   string `json:"itemId"`
+			ApprovalParams
 		}
 		if err := json.Unmarshal(m.Params, &p); err != nil {
 			return e, err
 		}
 
 		e.Type = base.EventApprovalRequested
-		content, err := approvalContent(m.Method, m.Params)
+		content, err := approvalContent(m.Method, &p.ApprovalParams)
 		if err != nil {
 			return e, err
 		}

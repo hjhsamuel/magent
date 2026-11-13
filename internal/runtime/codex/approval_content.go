@@ -1,18 +1,13 @@
 package codex
 
 import (
-	"encoding/json"
 	"html"
 	"strings"
 )
 
 // approvalContent renders only user-facing information as Markdown.
 // Never interpolate protocol values as markup.
-func approvalContent(method string, params json.RawMessage) (string, error) {
-	var p ApprovalParams
-	if err := json.Unmarshal(params, &p); err != nil {
-		return "", err
-	}
+func approvalContent(method string, p *ApprovalParams) (string, error) {
 	title := "命令执行审批"
 	switch method {
 	case "item/fileChange/requestApproval":

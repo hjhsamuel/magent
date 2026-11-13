@@ -132,15 +132,24 @@ type Item struct {
 type EventType string
 
 const (
-	EventError             EventType = "error"
+	// EventError 错误信息
+	EventError EventType = "error"
+	// EventApprovalRequested 审批请求
 	EventApprovalRequested EventType = "approval.requested"
-	EventRequestResolved   EventType = "request.resolved"
-	EventSessionClosed     EventType = "session.closed"
-	EventTurnCompleted     EventType = "turn.completed"
-	EventThinkingDelta     EventType = "thinking.delta"
-	EventTextDelta         EventType = "text.delta"
+	// EventRequestResolved 响应审批请求后的返回消息
+	EventRequestResolved EventType = "request.resolved"
+	// EventSessionClosed 会话关闭
+	EventSessionClosed EventType = "session.closed"
+	// EventTurnCompleted 轮次完成
+	EventTurnCompleted EventType = "turn.completed"
+	// EventThinkingDelta 思考片段
+	EventThinkingDelta EventType = "thinking.delta"
+	// EventTextDelta 正文片段
+	EventTextDelta EventType = "text.delta"
+	// EventThinkingCompleted 流输出结束，完整思考内容
 	EventThinkingCompleted EventType = "thinking.completed"
-	EventTextCompleted     EventType = "text.completed"
+	// EventTextCompleted 流输出完毕，完整正文内容
+	EventTextCompleted EventType = "text.completed"
 )
 
 // Event 的 Text 在增量事件中是 chunk，在完成事件中是单个 Item 的全文。
