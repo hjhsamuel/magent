@@ -9,25 +9,31 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
+
+const requestTimeout = 30 * time.Second
 
 // Runtime owns one initialized app-server connection.
 // Protocol: https://learn.chatgpt.com/docs/app-server
 // Consume Events continuously and use Approve for command/file approval requests.
 // An overflowing event queue closes the connection rather than dropping events.
 type Runtime struct {
-	conn      MessageTransport
-	threadID  string
-	exited    chan struct{}
-	mu        sync.Mutex
-	writeMu   sync.Mutex
-	pending   map[string]chan Message
-	approvals map[string]chan struct{}
-	nextID    uint64
-	events    chan Message
-	done      chan struct{}
-	err       error
-	once      sync.Once
+	conn       MessageTransport
+	threadID   string
+	exited     chan struct{}
+	mu         sync.Mutex
+	writeMu    sync.Mutex
+	pending    map[string]chan Message
+	approvals  map[string]chan struct{}
+	requestIDs map[string]json.RawMessage
+	serverIDs  map[string]string
+	nextID     uint64
+	events     chan Message
+	done       chan struct{}
+	err        error
+	once       sync.Once
 }
 
 func (r *Runtime) init(ctx context.Context) error {
@@ -85,6 +91,8 @@ func (r *Runtime) stop(err error) {
 	r.once.Do(func() {
 		r.mu.Lock()
 		r.err = err
+		r.requestIDs = nil
+		r.serverIDs = nil
 		close(r.done)
 		r.mu.Unlock()
 		_ = r.conn.Close()
@@ -141,17 +149,64 @@ func (r *Runtime) readLoop() {
 			}
 
 			r.mu.Lock()
-			ch := r.approvals[string(resolved.RequestID)]
+			key := string(bytes.TrimSpace(resolved.RequestID))
+			publicID, known := r.serverIDs[key]
+			delete(r.serverIDs, key)
+			delete(r.requestIDs, publicID)
+			ch := r.approvals[key]
 			if ch != nil {
-				delete(r.approvals, string(resolved.RequestID))
+				delete(r.approvals, key)
 				close(ch)
 			}
 			r.mu.Unlock()
+
+			if !known {
+				continue
+			}
+
+			resolved.RequestID = json.RawMessage(publicID)
+			m.Params, _ = json.Marshal(resolved)
+		}
+
+		if len(m.ID) > 0 {
+			public, err := newRequestID()
+			if err != nil {
+				r.stop(fmt.Errorf("generate request ID: %w", err))
+				return
+			}
+			publicKey := string(public)
+			originalID := append(json.RawMessage(nil), m.ID...)
+			key := string(bytes.TrimSpace(m.ID))
+
+			r.mu.Lock()
+
+			select {
+			case <-r.done:
+				r.mu.Unlock()
+				return
+			default:
+			}
+
+			if r.requestIDs == nil {
+				r.requestIDs = make(map[string]json.RawMessage)
+				r.serverIDs = make(map[string]string)
+			}
+			if _, exists := r.serverIDs[key]; exists {
+				r.mu.Unlock()
+				r.stop(errors.New("duplicate server request ID"))
+				return
+			}
+			r.requestIDs[publicKey] = originalID
+			r.serverIDs[key] = publicKey
+			r.mu.Unlock()
+
+			m.ID = public
 		}
 
 		if ignoreNotification(m) {
 			continue
 		}
+
 		select {
 		case <-r.done:
 			return
@@ -164,8 +219,6 @@ func (r *Runtime) readLoop() {
 }
 
 // call sends a request. Cancellation stops waiting, not the remote operation.
-const requestTimeout = 30 * time.Second
-
 func (r *Runtime) call(ctx context.Context, method Method, params, result any) (callErr error) {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
@@ -310,7 +363,7 @@ func (r *Runtime) TurnInterrupt(ctx context.Context, params TurnInterruptParams)
 }
 
 // Approve replies to a command-execution or file-change approval request.
-// id is the server request ID from Events, not its item or turn ID.
+// id is the opaque service-generated request ID from Events.
 // This operation supports command-execution and file-change decisions only.
 func (r *Runtime) Approve(ctx context.Context, id json.RawMessage, response ApprovalResponse) error {
 	switch response.Decision {
@@ -357,9 +410,15 @@ func (r *Runtime) replyAndWait(ctx context.Context, id json.RawMessage, response
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	key := string(bytes.TrimSpace(id))
+	publicID := string(bytes.TrimSpace(id))
 	ack := make(chan struct{})
 	r.mu.Lock()
+	originalID, exists := r.requestIDs[publicID]
+	if !exists {
+		r.mu.Unlock()
+		return errors.New("unknown or expired server request ID")
+	}
+	key := string(bytes.TrimSpace(originalID))
 	if r.approvals == nil {
 		r.approvals = make(map[string]chan struct{})
 	}
@@ -371,7 +430,7 @@ func (r *Runtime) replyAndWait(ctx context.Context, id json.RawMessage, response
 	r.mu.Unlock()
 	defer func() { r.mu.Lock(); delete(r.approvals, key); r.mu.Unlock() }()
 	sent := make(chan error, 1)
-	go func() { sent <- r.reply(id, response, nil) }()
+	go func() { sent <- r.reply(originalID, response, nil) }()
 	select {
 	case err := <-sent:
 		if err != nil {
@@ -428,4 +487,13 @@ func newRuntime(c MessageTransport) *Runtime {
 	}
 	go r.readLoop()
 	return r
+}
+
+// newRequestID generates a UUID v4 as a JSON string outside the Runtime lock.
+func newRequestID() (json.RawMessage, error) {
+	id, err := uuid.NewRandom()
+	if err != nil {
+		return nil, err
+	}
+	return strconv.AppendQuote(make(json.RawMessage, 0, 38), id.String()), nil
 }
