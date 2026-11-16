@@ -14,6 +14,7 @@ const (
 	MethodThreadStart         Method = "thread/start"
 	MethodThreadStarted       Method = "thread/started"
 	MethodThreadResume        Method = "thread/resume"
+	MethodThreadRead          Method = "thread/read"
 	MethodThreadStatusChanged Method = "thread/status/changed"
 
 	MethodTurnStart     Method = "turn/start"
@@ -22,6 +23,16 @@ const (
 	MethodTurnCompleted Method = "turn/completed"
 
 	MethodAgentMessageDelta Method = "item/agentMessage/delta"
+	MethodReasoningDelta    Method = "item/reasoning/textDelta"
+
+	MethodItemStarted   Method = "item/started"
+	MethodItemCompleted Method = "item/completed"
+
+	MethodCommandExecutionApproval Method = "item/commandExecution/requestApproval"
+	MethodFileChangeApproval       Method = "item/fileChange/requestApproval"
+	MethodPermissionsApproval      Method = "item/permissions/requestApproval"
+	MethodMcpServerElicitation     Method = "mcpServer/elicitation/request"
+	MethodServerRequestResolved    Method = "serverRequest/resolved"
 )
 
 type Message struct {
@@ -165,11 +176,6 @@ type AgentMessageDeltaNotification struct {
 	Delta    string `json:"delta"`
 }
 
-const (
-	MethodCommandExecutionApproval Method = "item/commandExecution/requestApproval"
-	MethodFileChangeApproval       Method = "item/fileChange/requestApproval"
-)
-
 type ApprovalDecision string
 
 const (
@@ -242,16 +248,111 @@ func ignoreNotification(m Message) bool {
 	return false
 }
 
-const MethodServerRequestResolved Method = "serverRequest/resolved"
-
 type ServerRequestResolvedParams struct {
 	ThreadID  string          `json:"threadId"`
 	RequestID json.RawMessage `json:"requestId"`
 }
 
-const MethodThreadRead Method = "thread/read"
-
 type ThreadReadParams struct {
 	ThreadID     string `json:"threadId"`
 	IncludeTurns bool   `json:"includeTurns"`
+}
+
+type PermissionGrantScope string
+
+const (
+	PermissionScopeTurn    PermissionGrantScope = "turn"
+	PermissionScopeSession PermissionGrantScope = "session"
+)
+
+type PermissionsRequestApprovalParams struct {
+	ThreadID      string                   `json:"threadId"`
+	TurnID        string                   `json:"turnId"`
+	ItemID        string                   `json:"itemId"`
+	EnvironmentID *string                  `json:"environmentId"`
+	StartedAtMs   int64                    `json:"startedAtMs"`
+	Cwd           string                   `json:"cwd"`
+	Reason        *string                  `json:"reason"`
+	Permissions   RequestPermissionProfile `json:"permissions"`
+}
+
+type RequestPermissionProfile struct {
+	Network    *AdditionalNetworkPermissions    `json:"network"`
+	FileSystem *AdditionalFileSystemPermissions `json:"fileSystem"`
+}
+
+type GrantedPermissionProfile struct {
+	Network    *AdditionalNetworkPermissions    `json:"network,omitempty"`
+	FileSystem *AdditionalFileSystemPermissions `json:"fileSystem,omitempty"`
+}
+
+type AdditionalNetworkPermissions struct {
+	Enabled *bool `json:"enabled"`
+}
+
+type AdditionalFileSystemPermissions struct {
+	Read             []string                 `json:"read"`
+	Write            []string                 `json:"write"`
+	GlobScanMaxDepth *uint32                  `json:"globScanMaxDepth,omitempty"`
+	Entries          []FileSystemSandboxEntry `json:"entries,omitempty"`
+}
+
+type FileSystemAccessMode string
+
+const (
+	FileSystemAccessRead  FileSystemAccessMode = "read"
+	FileSystemAccessWrite FileSystemAccessMode = "write"
+	FileSystemAccessDeny  FileSystemAccessMode = "deny"
+)
+
+type FileSystemSandboxEntry struct {
+	Path   FileSystemPath       `json:"path"`
+	Access FileSystemAccessMode `json:"access"`
+}
+
+type FileSystemPath struct {
+	Type    string          `json:"type"`
+	Path    string          `json:"path,omitempty"`
+	Pattern string          `json:"pattern,omitempty"`
+	Value   json.RawMessage `json:"value,omitempty"`
+}
+
+type PermissionsRequestApprovalResponse struct {
+	Permissions      GrantedPermissionProfile `json:"permissions"`
+	Scope            PermissionGrantScope     `json:"scope"`
+	StrictAutoReview bool                     `json:"strictAutoReview,omitempty"`
+}
+
+type McpElicitationMode string
+
+const (
+	McpElicitationForm             McpElicitationMode = "form"
+	McpElicitationOpenAIForm       McpElicitationMode = "openai/form"
+	McpElicitationOpenAIFormLegacy McpElicitationMode = "openaiForm"
+	McpElicitationURL              McpElicitationMode = "url"
+)
+
+type McpServerElicitationRequestParams struct {
+	ThreadID        string             `json:"threadId"`
+	TurnID          *string            `json:"turnId"`
+	ServerName      string             `json:"serverName"`
+	Mode            McpElicitationMode `json:"mode"`
+	Meta            json.RawMessage    `json:"_meta"`
+	Message         string             `json:"message"`
+	RequestedSchema json.RawMessage    `json:"requestedSchema,omitempty"`
+	URL             string             `json:"url,omitempty"`
+	ElicitationID   string             `json:"elicitationId,omitempty"`
+}
+type McpElicitationAction string
+
+const (
+	McpElicitationAccept  McpElicitationAction = "accept"
+	McpElicitationDecline McpElicitationAction = "decline"
+	McpElicitationCancel  McpElicitationAction = "cancel"
+)
+
+type McpServerElicitationRequestResponse struct {
+	Action  McpElicitationAction `json:"action"`
+	Content json.RawMessage      `json:"content"`
+	Meta    json.RawMessage      `json:"_meta"`
 }

@@ -111,16 +111,19 @@ func (r *Runtime) readLoop() {
 		defer close(r.exited)
 	}
 	defer close(r.events)
+
 	for {
 		var m Message
 		if err := r.conn.ReadMessage(&m); err != nil {
 			r.stop(err)
 			return
 		}
+
 		if m.Method == "" && len(m.ID) > 0 {
 			r.mu.Lock()
 			ch := r.pending[string(m.ID)]
 			r.mu.Unlock()
+
 			if ch != nil {
 				select {
 				case ch <- m:
@@ -129,12 +132,14 @@ func (r *Runtime) readLoop() {
 			}
 			continue
 		}
+
 		if m.Method == MethodServerRequestResolved && len(m.ID) == 0 {
 			var resolved ServerRequestResolvedParams
 			if err := json.Unmarshal(m.Params, &resolved); err != nil {
 				r.stop(fmt.Errorf("invalid serverRequest/resolved: %w", err))
 				return
 			}
+
 			r.mu.Lock()
 			ch := r.approvals[string(resolved.RequestID)]
 			if ch != nil {
@@ -143,6 +148,7 @@ func (r *Runtime) readLoop() {
 			}
 			r.mu.Unlock()
 		}
+
 		if ignoreNotification(m) {
 			continue
 		}
@@ -163,29 +169,46 @@ const requestTimeout = 30 * time.Second
 func (r *Runtime) call(ctx context.Context, method Method, params, result any) (callErr error) {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
+
 	defer func() {
 		if callErr != nil {
 			callErr = fmt.Errorf("codex %s: %w", method, callErr)
 		}
 	}()
+
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+
 	data, err := json.Marshal(params)
 	if err != nil {
 		return err
 	}
+
 	r.mu.Lock()
 	r.nextID++
 	id := strconv.FormatUint(r.nextID, 10)
 	ch := make(chan Message, 1)
 	r.pending[id] = ch
 	r.mu.Unlock()
-	defer func() { r.mu.Lock(); delete(r.pending, id); r.mu.Unlock() }()
+
+	defer func() {
+		r.mu.Lock()
+		delete(r.pending, id)
+		r.mu.Unlock()
+	}()
+
 	// A blocked transport write must also be interruptible. Canceling it closes
 	// this connection, since a partially written frame cannot safely be reused.
 	sent := make(chan error, 1)
-	go func() { sent <- r.write(&Message{ID: json.RawMessage(id), Method: method, Params: data}) }()
+	go func() {
+		sent <- r.write(&Message{
+			ID:     json.RawMessage(id),
+			Method: method,
+			Params: data,
+		})
+	}()
+
 	select {
 	case err = <-sent:
 		if err != nil {
@@ -197,9 +220,11 @@ func (r *Runtime) call(ctx context.Context, method Method, params, result any) (
 	case <-r.done:
 		return r.Err()
 	}
+
 	select {
 	case m := <-ch:
-		if (m.Error != nil && len(m.Result) != 0) || (m.Error == nil && (len(m.Result) == 0 || bytes.Equal(bytes.TrimSpace(m.Result), []byte("null")))) {
+		if (m.Error != nil && len(m.Result) != 0) ||
+			(m.Error == nil && (len(m.Result) == 0 || bytes.Equal(bytes.TrimSpace(m.Result), []byte("null")))) {
 			return errors.New("invalid response: expected exactly one non-null result or error")
 		}
 		if m.Error != nil {
@@ -293,6 +318,40 @@ func (r *Runtime) Approve(ctx context.Context, id json.RawMessage, response Appr
 	default:
 		return fmt.Errorf("unsupported approval decision: %q", response.Decision)
 	}
+	return r.replyAndWait(ctx, id, response)
+}
+
+// ApprovePermissions grants only the subset explicitly supplied by the caller.
+// An empty Permissions profile declines all requested permissions.
+func (r *Runtime) ApprovePermissions(ctx context.Context, id json.RawMessage, response PermissionsRequestApprovalResponse) error {
+	if response.Scope == "" {
+		response.Scope = PermissionScopeTurn
+	}
+	switch response.Scope {
+	case PermissionScopeTurn, PermissionScopeSession:
+	default:
+		return fmt.Errorf("unsupported permission scope: %q", response.Scope)
+	}
+	return r.replyAndWait(ctx, id, response)
+}
+
+// RespondElicitation answers an MCP form or URL request received through Events.
+func (r *Runtime) RespondElicitation(ctx context.Context, id json.RawMessage, response McpServerElicitationRequestResponse) error {
+	switch response.Action {
+	case McpElicitationAccept:
+	case McpElicitationDecline, McpElicitationCancel:
+		if len(response.Content) != 0 && !bytes.Equal(bytes.TrimSpace(response.Content), []byte("null")) {
+			return errors.New("declined or canceled elicitation must have null content")
+		}
+		response.Content = nil
+	default:
+		return fmt.Errorf("unsupported elicitation action: %q", response.Action)
+	}
+	return r.replyAndWait(ctx, id, response)
+}
+
+// Resolution confirms the server cleared the request, not that work was granted.
+func (r *Runtime) replyAndWait(ctx context.Context, id json.RawMessage, response any) error {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 	if err := ctx.Err(); err != nil {
@@ -306,7 +365,7 @@ func (r *Runtime) Approve(ctx context.Context, id json.RawMessage, response Appr
 	}
 	if _, exists := r.approvals[key]; exists {
 		r.mu.Unlock()
-		return errors.New("approval response already pending")
+		return errors.New("server request response already pending")
 	}
 	r.approvals[key] = ack
 	r.mu.Unlock()
@@ -316,11 +375,11 @@ func (r *Runtime) Approve(ctx context.Context, id json.RawMessage, response Appr
 	select {
 	case err := <-sent:
 		if err != nil {
-			return fmt.Errorf("send approval: %w", err)
+			return fmt.Errorf("send server request response: %w", err)
 		}
 	case <-ctx.Done():
 		r.stop(ctx.Err())
-		return fmt.Errorf("send approval: %w", ctx.Err())
+		return fmt.Errorf("send server request response: %w", ctx.Err())
 	case <-r.done:
 		return r.Err()
 	}
@@ -328,9 +387,9 @@ func (r *Runtime) Approve(ctx context.Context, id json.RawMessage, response Appr
 	case <-ack:
 		return nil
 	case <-ctx.Done():
-		return fmt.Errorf("approval resolution not confirmed: %w", ctx.Err())
+		return fmt.Errorf("server request resolution not confirmed: %w", ctx.Err())
 	case <-r.done:
-		return fmt.Errorf("approval resolution not confirmed: %w", r.Err())
+		return fmt.Errorf("server request resolution not confirmed: %w", r.Err())
 	}
 }
 
