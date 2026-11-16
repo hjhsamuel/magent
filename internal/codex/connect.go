@@ -1,11 +1,12 @@
 package codex
 
 import (
-	"bufio"
-	"encoding/json"
+	"context"
 	"fmt"
-	"io"
 	"net"
+	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 type MessageTransport interface {
@@ -14,38 +15,35 @@ type MessageTransport interface {
 	Close() error
 }
 
-type streamTransport struct {
-	io.ReadWriteCloser
-	scanner *bufio.Scanner
-	encoder *json.Encoder
+type websocketTransport struct {
+	*websocket.Conn
 }
 
-func (t *streamTransport) ReadMessage(m *Message) error {
-	if !t.scanner.Scan() {
-		if err := t.scanner.Err(); err != nil {
-			return err
-		}
-		return io.EOF
+func (t *websocketTransport) ReadMessage(m *Message) error {
+	return t.ReadJSON(m)
+}
+
+func (t *websocketTransport) WriteMessage(m *Message) error {
+	if err := t.SetWriteDeadline(time.Now().Add(requestTimeout)); err != nil {
+		return err
 	}
-	return json.Unmarshal(t.scanner.Bytes(), m)
+	return t.WriteJSON(m)
 }
 
-func (t *streamTransport) WriteMessage(m *Message) error {
-	return t.encoder.Encode(m)
-}
-
-func NewUnixConn(sockPath string) (MessageTransport, error) {
-	conn, err := net.Dial("unix", sockPath)
+func NewUnixConnContext(ctx context.Context, sockPath string) (MessageTransport, error) {
+	d := websocket.Dialer{
+		HandshakeTimeout: 30 * time.Second,
+		NetDialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, "unix", sockPath)
+		},
+	}
+	c, resp, err := d.DialContext(ctx, "ws://localhost/", nil)
 	if err != nil {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
 		return nil, fmt.Errorf("connect to codex socket: %w", err)
 	}
-
-	scanner := bufio.NewScanner(conn)
-	scanner.Buffer(make([]byte, 4096), 16*1024*1024)
-
-	return &streamTransport{
-		ReadWriteCloser: conn,
-		scanner:         scanner,
-		encoder:         json.NewEncoder(conn),
-	}, nil
+	c.SetReadLimit(16 * 1024 * 1024)
+	return &websocketTransport{c}, nil
 }

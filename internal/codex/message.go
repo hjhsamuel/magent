@@ -12,10 +12,16 @@ const (
 	MethodInitialized Method = "initialized"
 
 	MethodThreadStart         Method = "thread/start"
+	MethodThreadStarted       Method = "thread/started"
 	MethodThreadResume        Method = "thread/resume"
 	MethodThreadStatusChanged Method = "thread/status/changed"
 
-	MethodTurnStart Method = "turn/start"
+	MethodTurnStart     Method = "turn/start"
+	MethodTurnStarted   Method = "turn/started"
+	MethodTurnInterrupt Method = "turn/interrupt"
+	MethodTurnCompleted Method = "turn/completed"
+
+	MethodAgentMessageDelta Method = "item/agentMessage/delta"
 )
 
 type Message struct {
@@ -34,4 +40,218 @@ type RPCError struct {
 
 func (e *RPCError) Error() string {
 	return fmt.Sprintf("jsonrpc error %d: %s", e.Code, e.Message)
+}
+
+type ClientInfo struct {
+	Name    string `json:"name"`
+	Title   string `json:"title,omitempty"`
+	Version string `json:"version"`
+}
+
+type InitializeParams struct {
+	ClientInfo   ClientInfo              `json:"clientInfo"`
+	Capabilities *InitializeCapabilities `json:"capabilities,omitempty"`
+}
+
+type InitializeResponse struct {
+	UserAgent      string `json:"userAgent"`
+	PlatformFamily string `json:"platformFamily"`
+	PlatformOS     string `json:"platformOs"`
+}
+
+type InitializedParams struct{}
+
+type ThreadStartParams struct{}
+
+type ThreadResumeParams struct {
+	ThreadID string `json:"threadId"`
+}
+
+type ThreadResponse struct {
+	Thread Thread `json:"thread"`
+}
+
+type Thread struct {
+	ID            string       `json:"id"`
+	SessionID     string       `json:"sessionId,omitempty"`
+	Name          *string      `json:"name,omitempty"`
+	Preview       string       `json:"preview,omitempty"`
+	Cwd           string       `json:"cwd,omitempty"`
+	ModelProvider string       `json:"modelProvider,omitempty"`
+	CreatedAt     int64        `json:"createdAt,omitempty"`
+	UpdatedAt     int64        `json:"updatedAt,omitempty"`
+	Ephemeral     bool         `json:"ephemeral"`
+	Status        ThreadStatus `json:"status"`
+	Turns         []Turn       `json:"turns,omitempty"`
+}
+
+// ThreadStatusType is the app-server thread lifecycle state.
+// Unknown future values remain decodable for protocol compatibility.
+type ThreadStatusType string
+
+const (
+	ThreadStatusNotLoaded   ThreadStatusType = "notLoaded"
+	ThreadStatusIdle        ThreadStatusType = "idle"
+	ThreadStatusSystemError ThreadStatusType = "systemError"
+	ThreadStatusActive      ThreadStatusType = "active"
+)
+
+// ThreadActiveFlag identifies why an active thread is waiting.
+// Unknown future values remain decodable for protocol compatibility.
+type ThreadActiveFlag string
+
+const (
+	ThreadActiveFlagWaitingOnApproval  ThreadActiveFlag = "waitingOnApproval"
+	ThreadActiveFlagWaitingOnUserInput ThreadActiveFlag = "waitingOnUserInput"
+)
+
+type ThreadStatus struct {
+	Type        ThreadStatusType   `json:"type"`
+	ActiveFlags []ThreadActiveFlag `json:"activeFlags,omitempty"`
+}
+
+type ThreadStartedNotification struct {
+	Thread Thread `json:"thread"`
+}
+
+type ThreadStatusChangedNotification struct {
+	ThreadID string       `json:"threadId"`
+	Status   ThreadStatus `json:"status"`
+}
+
+type TextInput struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+type TurnStartParams struct {
+	ThreadID string      `json:"threadId"`
+	Input    []TextInput `json:"input"`
+}
+
+type TurnStartResponse struct {
+	Turn Turn `json:"turn"`
+}
+
+type Turn struct {
+	ID     string            `json:"id"`
+	Status string            `json:"status"`
+	Items  []json.RawMessage `json:"items"`
+	Error  *TurnError        `json:"error"`
+}
+
+type TurnError struct {
+	Message           string          `json:"message"`
+	CodexErrorInfo    json.RawMessage `json:"codexErrorInfo"`
+	AdditionalDetails *string         `json:"additionalDetails"`
+}
+
+type TurnInterruptParams struct {
+	ThreadID string `json:"threadId"`
+	TurnID   string `json:"turnId"`
+}
+
+type TurnInterruptResponse struct{}
+
+type TurnNotification struct {
+	ThreadID string `json:"threadId"`
+	Turn     Turn   `json:"turn"`
+}
+
+type AgentMessageDeltaNotification struct {
+	ThreadID string `json:"threadId"`
+	TurnID   string `json:"turnId"`
+	ItemID   string `json:"itemId"`
+	Delta    string `json:"delta"`
+}
+
+const (
+	MethodCommandExecutionApproval Method = "item/commandExecution/requestApproval"
+	MethodFileChangeApproval       Method = "item/fileChange/requestApproval"
+)
+
+type ApprovalDecision string
+
+const (
+	ApprovalAccept           ApprovalDecision = "accept"
+	ApprovalAcceptForSession ApprovalDecision = "acceptForSession"
+	ApprovalDecline          ApprovalDecision = "decline"
+	ApprovalCancel           ApprovalDecision = "cancel"
+)
+
+type ApprovalResponse struct {
+	Decision ApprovalDecision `json:"decision"`
+}
+
+type CommandExecutionApprovalParams struct {
+	ThreadID                    string                  `json:"threadId"`
+	TurnID                      string                  `json:"turnId"`
+	ItemID                      string                  `json:"itemId"`
+	Reason                      *string                 `json:"reason,omitempty"`
+	Command                     *string                 `json:"command,omitempty"`
+	Cwd                         *string                 `json:"cwd,omitempty"`
+	CommandActions              []json.RawMessage       `json:"commandActions,omitempty"`
+	ProposedExecpolicyAmendment []string                `json:"proposedExecpolicyAmendment,omitempty"`
+	AvailableDecisions          []json.RawMessage       `json:"availableDecisions,omitempty"`
+	NetworkApprovalContext      *NetworkApprovalContext `json:"networkApprovalContext,omitempty"`
+}
+
+type NetworkApprovalContext struct {
+	Host     string `json:"host"`
+	Protocol string `json:"protocol"`
+}
+
+type FileChangeApprovalParams struct {
+	ThreadID  string  `json:"threadId"`
+	TurnID    string  `json:"turnId"`
+	ItemID    string  `json:"itemId"`
+	Reason    *string `json:"reason,omitempty"`
+	GrantRoot *string `json:"grantRoot,omitempty"`
+}
+
+// InitializeCapabilities controls which auxiliary notifications the server emits.
+type InitializeCapabilities struct {
+	OptOutNotificationMethods []Method `json:"optOutNotificationMethods,omitempty"`
+}
+
+// Exact matches only: never suppress whole namespaces containing actionable events.
+// Return a fresh slice so initialization cannot mutate the filtering policy.
+func ignoredNotificationMethods() []Method {
+	return []Method{
+		MethodThreadStatusChanged,
+		"thread/tokenUsage/updated",
+		"account/rateLimits/updated",
+		"account/rateLimits/updates",    // Compatibility with the alternate spelling.
+		"model/safetyBuffering/updated", // Transient UI hint, not turn progress.
+		"skills/changed",                // Catalog cache invalidation; Runtime has no skills cache.
+		"thread/compacted",              // Deprecated; compaction is represented by item events.
+		"item/fileChange/outputDelta",   // Deprecated; item completion carries changes.
+	}
+}
+
+func ignoreNotification(m Message) bool {
+	// Requests must be answered; a method name alone must never discard one.
+	if len(m.ID) != 0 || m.Error != nil {
+		return false
+	}
+	for _, method := range ignoredNotificationMethods() {
+		if m.Method == method {
+			return true
+		}
+	}
+	return false
+}
+
+const MethodServerRequestResolved Method = "serverRequest/resolved"
+
+type ServerRequestResolvedParams struct {
+	ThreadID  string          `json:"threadId"`
+	RequestID json.RawMessage `json:"requestId"`
+}
+
+const MethodThreadRead Method = "thread/read"
+
+type ThreadReadParams struct {
+	ThreadID     string `json:"threadId"`
+	IncludeTurns bool   `json:"includeTurns"`
 }
