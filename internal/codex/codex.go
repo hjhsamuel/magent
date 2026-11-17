@@ -365,40 +365,58 @@ func (r *Runtime) TurnInterrupt(ctx context.Context, params TurnInterruptParams)
 // Approve replies to a command-execution or file-change approval request.
 // id is the opaque service-generated request ID from Events.
 // This operation supports command-execution and file-change decisions only.
-func (r *Runtime) Approve(ctx context.Context, id json.RawMessage, response ApprovalResponse) error {
-	switch response.Decision {
-	case ApprovalAccept, ApprovalAcceptForSession, ApprovalDecline, ApprovalCancel:
-	default:
-		return fmt.Errorf("unsupported approval decision: %q", response.Decision)
-	}
-	return r.replyAndWait(ctx, id, response)
+func (r *Runtime) Approve(
+	ctx context.Context,
+	id json.RawMessage,
+	decision ApprovalDecision,
+) error {
+	return r.replyAndWait(ctx, id, ApprovalResponse{Decision: decision})
 }
 
 // ApprovePermissions grants only the subset explicitly supplied by the caller.
-// An empty Permissions profile declines all requested permissions.
-func (r *Runtime) ApprovePermissions(ctx context.Context, id json.RawMessage, response PermissionsRequestApprovalResponse) error {
-	if response.Scope == "" {
-		response.Scope = PermissionScopeTurn
+// Decline and Cancel ignore supplied permissions and grant nothing.
+func (r *Runtime) ApprovePermissions(
+	ctx context.Context,
+	id json.RawMessage,
+	decision ApprovalDecision,
+	permission GrantedPermissionProfile,
+) error {
+	response := PermissionsRequestApprovalResponse{
+		Scope: PermissionScopeTurn,
 	}
-	switch response.Scope {
-	case PermissionScopeTurn, PermissionScopeSession:
+	switch decision {
+	case ApprovalAccept, ApprovalAcceptForSession:
+		response.Permissions = permission
+		if decision == ApprovalAcceptForSession {
+			response.Scope = PermissionScopeSession
+		}
+	case ApprovalDecline, ApprovalCancel:
+
 	default:
-		return fmt.Errorf("unsupported permission scope: %q", response.Scope)
+		return fmt.Errorf("unsupported approval decision: %q", decision)
 	}
 	return r.replyAndWait(ctx, id, response)
 }
 
 // RespondElicitation answers an MCP form or URL request received through Events.
-func (r *Runtime) RespondElicitation(ctx context.Context, id json.RawMessage, response McpServerElicitationRequestResponse) error {
-	switch response.Action {
-	case McpElicitationAccept:
-	case McpElicitationDecline, McpElicitationCancel:
-		if len(response.Content) != 0 && !bytes.Equal(bytes.TrimSpace(response.Content), []byte("null")) {
-			return errors.New("declined or canceled elicitation must have null content")
-		}
-		response.Content = nil
+// Decline and Cancel ignore content and send null.
+func (r *Runtime) RespondElicitation(
+	ctx context.Context,
+	id json.RawMessage,
+	decision ApprovalDecision,
+	content json.RawMessage,
+) error {
+	response := McpServerElicitationRequestResponse{}
+	switch decision {
+	case ApprovalAccept:
+		response.Action = McpElicitationAccept
+		response.Content = content
+	case ApprovalDecline:
+		response.Action = McpElicitationDecline
+	case ApprovalCancel:
+		response.Action = McpElicitationCancel
 	default:
-		return fmt.Errorf("unsupported elicitation action: %q", response.Action)
+		return fmt.Errorf("unsupported elicitation decision: %q", decision)
 	}
 	return r.replyAndWait(ctx, id, response)
 }
