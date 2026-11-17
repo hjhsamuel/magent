@@ -248,6 +248,20 @@ func ignoreNotification(m Message) bool {
 	return false
 }
 
+// Only explicitly identified text deltas may be lost under backpressure.
+// Requests, errors, lifecycle events and unknown future methods must survive.
+func droppableEvent(m Message) bool {
+	if len(m.ID) != 0 || m.Error != nil {
+		return false
+	}
+	switch m.Method {
+	case MethodAgentMessageDelta, MethodReasoningDelta:
+		return true
+	default:
+		return false
+	}
+}
+
 type ServerRequestResolvedParams struct {
 	ThreadID  string          `json:"threadId"`
 	RequestID json.RawMessage `json:"requestId"`

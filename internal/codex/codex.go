@@ -18,7 +18,9 @@ const requestTimeout = 30 * time.Second
 // Runtime owns one initialized app-server connection.
 // Protocol: https://learn.chatgpt.com/docs/app-server
 // Consume Events continuously and use Approve for command/file approval requests.
-// An overflowing event queue closes the connection rather than dropping events.
+// When Events is full, text deltas are dropped and other events apply backpressure.
+// Keep draining Events independently of RPC/approval calls: backpressure pauses
+// the shared protocol reader, including responses. Final items must reconcile deltas.
 type Runtime struct {
 	conn       MessageTransport
 	threadID   string
@@ -207,13 +209,19 @@ func (r *Runtime) readLoop() {
 			continue
 		}
 
+		if droppableEvent(m) {
+			select {
+			case <-r.done:
+				return
+			case r.events <- m:
+			default:
+			}
+			continue
+		}
 		select {
 		case <-r.done:
 			return
 		case r.events <- m:
-		default:
-			r.stop(errors.New("codex event queue overflow"))
-			return
 		}
 	}
 }

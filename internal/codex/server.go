@@ -114,17 +114,17 @@ func (s *Server) closeProcess(expected *exec.Cmd) {
 		children = append(children, r)
 	}
 	s.mu.Unlock()
-	// Signal before waiting: app-server closes the connections as it shuts down,
-	// allowing each Runtime read loop to finish and deliver its remaining events.
+	// Signal before waiting. Once the process exits, cancel local readers too:
+	// a reader blocked on event delivery cannot observe the transport closing.
 	select {
 	case <-done:
 	default:
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 	}
-	for _, r := range children {
-		r.WaitClosed()
-	}
 	<-done
+	for _, r := range children {
+		_ = r.Close()
+	}
 	s.mu.Lock()
 	s.runtimes = make(map[string]*Runtime)
 	s.cmd = nil
