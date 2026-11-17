@@ -11,6 +11,7 @@ import (
 	"github.com/hjhsamuel/magent/internal/ringbuffer"
 	"github.com/hjhsamuel/magent/internal/store/schema"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 func (s *Service) Chat(
@@ -44,43 +45,84 @@ func (s *Service) Chat(
 
 	r, err := s.cm.OpenRuntime(context.Background(), obj.RunId)
 	if err != nil {
+		producer.Close()
 		return err
 	}
 
-	go s.turnStart(content, r, producer)
+	go s.turnStart(sid, r, producer)
+
+	turnId, err := s.store.StartTurn(context.Background(), sid, content)
+	if err != nil {
+		_ = r.Close()
+		producer.Close()
+		return err
+	}
+
+	response, err := r.TurnStart(context.Background(), codex.TurnStartParams{
+		ThreadID: r.ThreadID(),
+		Input:    []codex.TextInput{{Type: "text", Text: content}},
+	})
+	if err != nil {
+		_ = r.Close()
+		producer.Close()
+		_ = s.store.TurnComplete(context.Background(), obj.RunId, "", err.Error())
+		return err
+	} else {
+		_ = s.store.UpdateTurn(
+			context.Background(),
+			bson.M{"_id": turnId},
+			bson.M{"$set": bson.M{"turn_id": response.Turn.ID}},
+		)
+	}
+
 	return nil
 }
 
 func (s *Service) turnStart(
-	content string,
+	sessionId bson.ObjectID,
 	r *codex.Runtime,
 	producer *ringbuffer.Producer,
 ) {
 	defer producer.Close()
 	defer r.Close()
 
-	_, err := r.TurnStart(context.Background(), codex.TurnStartParams{
-		ThreadID: r.ThreadID(),
-		Input:    []codex.TextInput{{Type: "text", Text: content}},
-	})
-	if err != nil {
-		return
-	}
-
 	for {
 		select {
 		case e := <-r.Events():
-			if s.parseRuntimeMessage(producer, e) {
-				// TODO
-				// 退出循环，结束处理
+			completed := s.parseRuntimeMessage(producer, e)
+			if completed == nil {
+				continue
 			}
+			if completed.TurnID == "" {
+				turns, err := s.store.GetTurnList(
+					context.Background(),
+					bson.M{"session": sessionId},
+					options.Find().SetSort(bson.M{"created_at": -1}).SetLimit(1),
+				)
+				if err != nil || len(turns) == 0 {
+					return
+				}
+				completed.TurnID = turns[0].TurnID
+			}
+			_ = s.store.TurnComplete(context.Background(), r.ThreadID(), completed.TurnID, completed.Summary)
+			_, _ = producer.Write(ringbuffer.Payload{
+				Type: ringbuffer.SSEventComplete,
+				Data: ringbuffer.CommonEvent{Data: completed.Summary},
+			})
 		case <-r.Done():
 			return
 		}
 	}
 }
 
-func (s *Service) parseRuntimeMessage(producer *ringbuffer.Producer, e codex.Message) bool {
+type completedTurn struct {
+	TurnID  string
+	Summary string
+}
+
+// parseRuntimeMessage returns a completion even when its summary is empty.
+// The caller persists it before publishing the complete event.
+func (s *Service) parseRuntimeMessage(producer *ringbuffer.Producer, e codex.Message) *completedTurn {
 	switch e.Method {
 	case codex.MethodItemCompleted:
 		_, _ = producer.Write(ringbuffer.Payload{
@@ -91,7 +133,7 @@ func (s *Service) parseRuntimeMessage(producer *ringbuffer.Producer, e codex.Mes
 			Delta string `json:"delta"`
 		}
 		if err := json.Unmarshal(e.Params, &params); err != nil {
-			return false
+			return nil
 		}
 		_, _ = producer.Write(ringbuffer.Payload{
 			Type: ringbuffer.SSEventReasoningDelta,
@@ -102,52 +144,23 @@ func (s *Service) parseRuntimeMessage(producer *ringbuffer.Producer, e codex.Mes
 			Delta string `json:"delta"`
 		}
 		if err := json.Unmarshal(e.Params, &params); err != nil {
-			return false
+			return nil
 		}
 		_, _ = producer.Write(ringbuffer.Payload{
 			Type: ringbuffer.SSEventMessageDelta,
 			Data: ringbuffer.CommonEvent{Data: params.Delta},
 		})
 	case codex.MethodTurnCompleted:
-		var params struct {
-			Turn *struct {
-				Items []struct {
-					Type string `json:"type"`
-					Text string `json:"text"`
-				} `json:"items"`
-			} `json:"turn"`
-			Error *struct {
-				Message string `json:"message"`
-			} `json:"error"`
-		}
+		var params codex.TurnNotification
 		if err := json.Unmarshal(e.Params, &params); err != nil {
-			return true
-		}
-
-		var content string
-		if params.Error != nil {
-			content = params.Error.Message
-		} else if params.Turn != nil {
-			parts := make([]string, 0)
-			for _, item := range params.Turn.Items {
-				if item.Type != "agentMessage" {
-					continue
-				}
-				parts = append(parts, item.Text)
+			return &completedTurn{
+				Summary: err.Error(),
 			}
-			if len(parts) == 0 {
-				return true
-			}
-			content = strings.Join(parts, "\n")
-		} else {
-			return true
 		}
-		_, _ = producer.Write(ringbuffer.Payload{
-			Type: ringbuffer.SSEventComplete,
-			Data: ringbuffer.CommonEvent{Data: content},
-		})
-		// 接收到 turn/completed 信号，表示轮次结束
-		return true
+		return &completedTurn{
+			TurnID:  params.Turn.ID,
+			Summary: turnSummary(params.Turn),
+		}
 	case codex.MethodError:
 		var params struct {
 			Error struct {
@@ -156,7 +169,7 @@ func (s *Service) parseRuntimeMessage(producer *ringbuffer.Producer, e codex.Mes
 			} `json:"error"`
 		}
 		if err := json.Unmarshal(e.Params, &params); err != nil {
-			return false
+			return nil
 		}
 		_, _ = producer.Write(ringbuffer.Payload{
 			Type: ringbuffer.SSEventError,
@@ -168,7 +181,7 @@ func (s *Service) parseRuntimeMessage(producer *ringbuffer.Producer, e codex.Mes
 	case codex.MethodCommandExecutionApproval:
 		var params codex.CommandExecutionApprovalParams
 		if err := json.Unmarshal(e.Params, &params); err != nil {
-			return false
+			return nil
 		}
 
 		parts := make([]string, 0)
@@ -188,7 +201,7 @@ func (s *Service) parseRuntimeMessage(producer *ringbuffer.Producer, e codex.Mes
 	case codex.MethodFileChangeApproval:
 		var params codex.FileChangeApprovalParams
 		if err := json.Unmarshal(e.Params, &params); err != nil {
-			return false
+			return nil
 		}
 
 		var content string
@@ -205,7 +218,7 @@ func (s *Service) parseRuntimeMessage(producer *ringbuffer.Producer, e codex.Mes
 	case codex.MethodPermissionsApproval:
 		var params codex.PermissionsRequestApprovalParams
 		if err := json.Unmarshal(e.Params, &params); err != nil {
-			return false
+			return nil
 		}
 
 		var content string
@@ -223,7 +236,7 @@ func (s *Service) parseRuntimeMessage(producer *ringbuffer.Producer, e codex.Mes
 	case codex.MethodMcpServerElicitation:
 		var params codex.McpServerElicitationRequestParams
 		if err := json.Unmarshal(e.Params, &params); err != nil {
-			return false
+			return nil
 		}
 		_, _ = producer.Write(ringbuffer.Payload{
 			Type: ringbuffer.SSEventApprove,
@@ -235,5 +248,22 @@ func (s *Service) parseRuntimeMessage(producer *ringbuffer.Producer, e codex.Mes
 	default:
 	}
 
-	return false
+	return nil
+}
+
+func turnSummary(turn codex.Turn) string {
+	if turn.Error != nil {
+		return turn.Error.Message
+	}
+	var parts []string
+	for _, raw := range turn.Items {
+		var item struct {
+			Type string
+			Text string
+		}
+		if json.Unmarshal(raw, &item) == nil && item.Type == "agentMessage" {
+			parts = append(parts, item.Text)
+		}
+	}
+	return strings.Join(parts, "\n")
 }
