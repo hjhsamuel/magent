@@ -81,7 +81,7 @@ func (s *Service) Listen(
 
 	if err = s.pushSSEvent(ctx, ringbuffer.Payload{
 		Type: ringbuffer.SSEventInit,
-		Data: id,
+		Data: ringbuffer.CommonEvent{Data: id},
 	}); err != nil {
 		return err
 	}

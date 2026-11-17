@@ -70,14 +70,17 @@ func (s *Service) turnStart(
 	for {
 		select {
 		case e := <-r.Events():
-			s.parseRuntimeMessage(producer, e)
+			if s.parseRuntimeMessage(producer, e) {
+				// TODO
+				// 退出循环，结束处理
+			}
 		case <-r.Done():
 			return
 		}
 	}
 }
 
-func (s *Service) parseRuntimeMessage(producer *ringbuffer.Producer, e codex.Message) {
+func (s *Service) parseRuntimeMessage(producer *ringbuffer.Producer, e codex.Message) bool {
 	switch e.Method {
 	case codex.MethodItemCompleted:
 		_, _ = producer.Write(ringbuffer.Payload{
@@ -88,22 +91,22 @@ func (s *Service) parseRuntimeMessage(producer *ringbuffer.Producer, e codex.Mes
 			Delta string `json:"delta"`
 		}
 		if err := json.Unmarshal(e.Params, &params); err != nil {
-			return
+			return false
 		}
 		_, _ = producer.Write(ringbuffer.Payload{
 			Type: ringbuffer.SSEventReasoningDelta,
-			Data: params.Delta,
+			Data: ringbuffer.CommonEvent{Data: params.Delta},
 		})
 	case codex.MethodAgentMessageDelta:
 		var params struct {
 			Delta string `json:"delta"`
 		}
 		if err := json.Unmarshal(e.Params, &params); err != nil {
-			return
+			return false
 		}
 		_, _ = producer.Write(ringbuffer.Payload{
 			Type: ringbuffer.SSEventMessageDelta,
-			Data: params.Delta,
+			Data: ringbuffer.CommonEvent{Data: params.Delta},
 		})
 	case codex.MethodTurnCompleted:
 		var params struct {
@@ -118,7 +121,7 @@ func (s *Service) parseRuntimeMessage(producer *ringbuffer.Producer, e codex.Mes
 			} `json:"error"`
 		}
 		if err := json.Unmarshal(e.Params, &params); err != nil {
-			return
+			return true
 		}
 
 		var content string
@@ -133,16 +136,18 @@ func (s *Service) parseRuntimeMessage(producer *ringbuffer.Producer, e codex.Mes
 				parts = append(parts, item.Text)
 			}
 			if len(parts) == 0 {
-				return
+				return true
 			}
 			content = strings.Join(parts, "\n")
 		} else {
-			return
+			return true
 		}
 		_, _ = producer.Write(ringbuffer.Payload{
 			Type: ringbuffer.SSEventComplete,
-			Data: content,
+			Data: ringbuffer.CommonEvent{Data: content},
 		})
+		// 接收到 turn/completed 信号，表示轮次结束
+		return true
 	case codex.MethodError:
 		var params struct {
 			Error struct {
@@ -151,7 +156,7 @@ func (s *Service) parseRuntimeMessage(producer *ringbuffer.Producer, e codex.Mes
 			} `json:"error"`
 		}
 		if err := json.Unmarshal(e.Params, &params); err != nil {
-			return
+			return false
 		}
 		_, _ = producer.Write(ringbuffer.Payload{
 			Type: ringbuffer.SSEventError,
@@ -161,14 +166,74 @@ func (s *Service) parseRuntimeMessage(producer *ringbuffer.Producer, e codex.Mes
 			},
 		})
 	case codex.MethodCommandExecutionApproval:
-		// TODO
+		var params codex.CommandExecutionApprovalParams
+		if err := json.Unmarshal(e.Params, &params); err != nil {
+			return false
+		}
+
+		parts := make([]string, 0)
+		if params.Reason != nil {
+			parts = append(parts, *params.Reason)
+		}
+		if params.Command != nil {
+			parts = append(parts, "`"+*params.Command+"`")
+		}
+		_, _ = producer.Write(ringbuffer.Payload{
+			Type: ringbuffer.SSEventApprove,
+			Data: ringbuffer.ApproveReq{
+				ID:      e.ID,
+				Content: strings.Join(parts, "\n"),
+			},
+		})
 	case codex.MethodFileChangeApproval:
-		// TODO
+		var params codex.FileChangeApprovalParams
+		if err := json.Unmarshal(e.Params, &params); err != nil {
+			return false
+		}
+
+		var content string
+		if params.Reason != nil {
+			content = *params.Reason
+		}
+		_, _ = producer.Write(ringbuffer.Payload{
+			Type: ringbuffer.SSEventApprove,
+			Data: ringbuffer.ApproveReq{
+				ID:      e.ID,
+				Content: content,
+			},
+		})
 	case codex.MethodPermissionsApproval:
-		// TODO
+		var params codex.PermissionsRequestApprovalParams
+		if err := json.Unmarshal(e.Params, &params); err != nil {
+			return false
+		}
+
+		var content string
+		if params.Reason != nil {
+			content = *params.Reason
+		}
+		_, _ = producer.Write(ringbuffer.Payload{
+			Type: ringbuffer.SSEventApprove,
+			Data: ringbuffer.PermissionReq{
+				ID:         e.ID,
+				Content:    content,
+				Permission: params.Permissions,
+			},
+		})
 	case codex.MethodMcpServerElicitation:
-		// TODO
+		var params codex.McpServerElicitationRequestParams
+		if err := json.Unmarshal(e.Params, &params); err != nil {
+			return false
+		}
+		_, _ = producer.Write(ringbuffer.Payload{
+			Type: ringbuffer.SSEventApprove,
+			Data: ringbuffer.ElicitationReq{
+				ID:     e.ID,
+				Schema: params.RequestedSchema,
+			},
+		})
 	default:
-		return
 	}
+
+	return false
 }

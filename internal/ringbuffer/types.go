@@ -17,7 +17,7 @@ var (
 type Payload struct {
 	ID   uint64
 	Type SSEvent
-	Data any // 除了 approve，其余都为 string 或空
+	Data any // 除了 approve，其余都为 CommonEvent 或空
 }
 
 type SSEvent string
@@ -35,6 +35,11 @@ const (
 	SSEventError          SSEvent = "error"           // 错误信息
 )
 
+// CommonEvent 将普通的数据进行结构体封装，避免浏览器将 sse 数据的第一个空格移除
+type CommonEvent struct {
+	Data string `json:"data"`
+}
+
 type ApproveReq struct {
 	ID      json.RawMessage `json:"id"`
 	Content string          `json:"content"`
@@ -42,6 +47,7 @@ type ApproveReq struct {
 
 type PermissionReq struct {
 	ID         json.RawMessage `json:"id"`
+	Content    string          `json:"content"`
 	Permission any             `json:"permission"`
 }
 
