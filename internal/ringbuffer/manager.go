@@ -39,6 +39,39 @@ func (m *Manager) Get(id string) (*RingBuffer, bool) {
 	return b, ok
 }
 
+// CreateOrGet atomically returns the existing stream or creates one.
+// A closed Manager returns ErrClosed and cannot create new streams.
+func (m *Manager) CreateOrGet(id string) (*RingBuffer, error) {
+	// Existing streams only need a shared lock. Recheck after taking the write
+	// lock because another caller may create the stream or close the manager.
+	m.mu.RLock()
+	if m.closed {
+		m.mu.RUnlock()
+		return nil, ErrClosed
+	}
+	b, ok := m.streams[id]
+	m.mu.RUnlock()
+	if ok {
+		return b, nil
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.closed {
+		return nil, ErrClosed
+	}
+	if b, ok := m.streams[id]; ok {
+		return b, nil
+	}
+	if m.streams == nil {
+		m.streams = make(map[string]*RingBuffer)
+	}
+	b = NewRingBuffer()
+	m.streams[id] = b
+	return b, nil
+}
+
 func (m *Manager) Delete(id string) {
 	m.mu.Lock()
 	b := m.streams[id]

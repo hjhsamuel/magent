@@ -33,6 +33,8 @@ const (
 	MethodPermissionsApproval      Method = "item/permissions/requestApproval"
 	MethodMcpServerElicitation     Method = "mcpServer/elicitation/request"
 	MethodServerRequestResolved    Method = "serverRequest/resolved"
+
+	MethodError Method = "error"
 )
 
 type Message struct {

@@ -58,20 +58,16 @@ func (s *Service) Listen(
 		runId, id = obj.RunId, sessionId
 	}
 
-	buffer, exists := s.rb.Get(runId)
-	if !exists {
-		buffer, err = s.rb.Create(runId)
-		if errors.Is(err, ringbuffer.ErrExists) {
-			buffer, exists = s.rb.Get(runId)
-			if !exists {
-				return err
-			}
-		} else if err != nil {
-			return err
-		}
+	buffer, err := s.rb.CreateOrGet(runId)
+	if err != nil {
+		return err
 	}
 	consumer, err := buffer.ConnectConsumer(seq)
 	if err != nil {
+		// 仅当为新会话时关闭 ringbuffer
+		if sessionId == "" {
+			buffer.Close()
+		}
 		return err
 	}
 	defer consumer.Close()

@@ -32,6 +32,7 @@ const (
 	SSEventMessage        SSEvent = "message"         // 正文内容
 	SSEventComplete       SSEvent = "complete"        // 对话结束
 	SSEventApprove        SSEvent = "approve"         // 审批请求
+	SSEventError          SSEvent = "error"           // 错误信息
 )
 
 type ApproveReq struct {
@@ -47,4 +48,9 @@ type PermissionReq struct {
 type ElicitationReq struct {
 	ID     json.RawMessage `json:"id"`
 	Schema json.RawMessage `json:"schema"`
+}
+
+type ErrorEvent struct {
+	Message           string `json:"message"`
+	AdditionalDetails string `json:"additional_details"`
 }

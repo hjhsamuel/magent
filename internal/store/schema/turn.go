@@ -25,7 +25,8 @@ type Message struct {
 type MessageRole string
 
 const (
-	MessageRoleUser      MessageRole = "user"       // 用户普通输入
-	MessageRoleModel     MessageRole = "model"      // 模型输出
-	MessageRoleUserInput MessageRole = "user-input" // 用户审批
+	MessageRoleUser       MessageRole = "user"        // 用户普通输入
+	MessageRoleModel      MessageRole = "model"       // 模型输出
+	MessageRoleUserInput  MessageRole = "user-input"  // 用户审批
+	MessageRoleModelError MessageRole = "model-error" // 模型输出的错误信息
 )
