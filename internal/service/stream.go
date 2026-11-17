@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"errors"
+	"io"
 	"strconv"
 	"time"
 
@@ -59,7 +61,12 @@ func (s *Service) Listen(
 	buffer, exists := s.rb.Get(runId)
 	if !exists {
 		buffer, err = s.rb.Create(runId)
-		if err != nil {
+		if errors.Is(err, ringbuffer.ErrExists) {
+			buffer, exists = s.rb.Get(runId)
+			if !exists {
+				return err
+			}
+		} else if err != nil {
 			return err
 		}
 	}
@@ -76,36 +83,55 @@ func (s *Service) Listen(
 	ctx.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 	ctx.Writer.Header().Set("X-Accel-Buffering", "no")
 
-	ctx.Render(-1, sse.Event{
-		Event: string(ringbuffer.SSEventInit),
-		Data:  id,
-	})
-	ctx.Writer.Flush()
+	if err = s.pushSSEvent(ctx, ringbuffer.Payload{
+		Type: ringbuffer.SSEventInit,
+		Data: id,
+	}); err != nil {
+		return err
+	}
 
-	// 先一次性读取缓存 chunk
-	chunks, err := consumer.ReadAll()
+	events, err := consumer.ReadAll()
 	if err != nil {
 		return err
 	}
-	for _, item := range chunks {
-		ctx.Render(-1, sse.Event{
-			Event: string(item.Type),
-			Id:    strconv.FormatUint(item.ID, 10),
-			Data:  item.Data,
-		})
+	if err = s.pushSSEvent(ctx, events...); err != nil {
+		return err
 	}
-	ctx.Writer.Flush()
 
 	for {
 		item, err := consumer.Next(ctx)
 		if err != nil {
+			if errors.Is(err, ctx.Err()) || errors.Is(err, io.EOF) {
+				return nil
+			}
 			return err
 		}
-		ctx.Render(-1, sse.Event{
-			Event: string(item.Type),
-			Id:    strconv.FormatUint(item.ID, 10),
-			Data:  item.Data,
-		})
-		ctx.Writer.Flush()
+		if err = s.pushSSEvent(ctx, item); err != nil {
+			return err
+		}
 	}
+}
+
+func (s *Service) pushSSEvent(ctx *gin.Context, events ...ringbuffer.Payload) error {
+	if len(events) == 0 {
+		return nil
+	}
+
+	ctx.Request.Context()
+
+	for _, event := range events {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			ctx.Render(-1, sse.Event{
+				Event: string(event.Type),
+				Id:    strconv.FormatUint(event.ID, 10),
+				Data:  event.Data,
+			})
+		}
+	}
+	ctx.Writer.Flush()
+
+	return nil
 }

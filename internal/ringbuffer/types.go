@@ -11,7 +11,6 @@ var (
 	ErrClosed            = errors.New("sse: closed")
 	ErrProducerConnected = errors.New("sse: producer already connected")
 	ErrConsumerConnected = errors.New("sse: consumer already connected")
-	ErrInvalidID         = errors.New("sse: last event ID is ahead of stream")
 	ErrExists            = errors.New("sse: stream already exists")
 )
 

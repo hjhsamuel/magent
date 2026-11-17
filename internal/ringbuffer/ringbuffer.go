@@ -35,7 +35,7 @@ func (b *RingBuffer) ConnectProducer() (*Producer, error) {
 // ConnectConsumer resumes after lastID. Zero requests all retained messages.
 // An overwritten ID resumes AT the latest retained part_end/complete marker,
 // or at the oldest retained message if no marker survives. The same recovery
-// applies when a connected consumer falls behind. Future IDs are rejected.
+// applies when a connected consumer falls behind or lastID is ahead of the stream.
 func (b *RingBuffer) ConnectConsumer(lastID uint64) (*Consumer, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -46,9 +46,6 @@ func (b *RingBuffer) ConnectConsumer(lastID uint64) (*Consumer, error) {
 	if b.consumer != nil {
 		return nil, ErrConsumerConnected
 	}
-	if lastID > b.last {
-		return nil, ErrInvalidID
-	}
 
 	c := &Consumer{
 		b:    b,
@@ -57,7 +54,7 @@ func (b *RingBuffer) ConnectConsumer(lastID uint64) (*Consumer, error) {
 	}
 	if lastID == 0 {
 		c.next = b.oldest()
-	} else if lastID < b.oldest() {
+	} else if lastID > b.last || lastID < b.oldest() {
 		c.next = b.recovery()
 	}
 	b.consumer = c
