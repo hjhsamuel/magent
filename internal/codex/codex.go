@@ -83,7 +83,7 @@ func (r *Runtime) Err() error {
 
 func (r *Runtime) Close() error {
 	r.stop(errors.New("codex runtime closed"))
-	r.waitClosed()
+	r.WaitClosed()
 	return nil
 }
 
@@ -317,7 +317,7 @@ func (r *Runtime) reply(id json.RawMessage, result any, rpcErr *RPCError) error 
 	return r.write(m)
 }
 
-// ThreadStart creates a thread independently of connection initialization.
+// ThreadStart creates a thread and binds the Runtime after validating the response.
 func (r *Runtime) ThreadStart(ctx context.Context, params ThreadStartParams) (ThreadResponse, error) {
 	if r.threadID != "" {
 		return ThreadResponse{}, errors.New("runtime already bound to a thread")
@@ -326,6 +326,9 @@ func (r *Runtime) ThreadStart(ctx context.Context, params ThreadStartParams) (Th
 	err := r.call(ctx, MethodThreadStart, params, &result)
 	if err == nil && result.Thread.ID == "" {
 		err = errors.New("codex thread/start: response missing thread ID")
+	}
+	if err == nil {
+		r.threadID = result.Thread.ID
 	}
 	return result, err
 }
@@ -470,7 +473,8 @@ func (r *Runtime) replyAndWait(ctx context.Context, id json.RawMessage, response
 	}
 }
 
-func (r *Runtime) waitClosed() {
+// WaitClosed waits for the reader to exit without initiating shutdown.
+func (r *Runtime) WaitClosed() {
 	if r.exited != nil {
 		<-r.exited
 	}
@@ -481,10 +485,49 @@ func (r *Runtime) ThreadID() string {
 	return r.threadID
 }
 
+// OpenThread creates or resumes a thread and binds it before publishing the Runtime.
+// Call this before sharing the Runtime with other goroutines.
+func (r *Runtime) OpenThread(ctx context.Context, threadID string) (string, error) {
+	if r.threadID != "" {
+		return "", errors.New("runtime already bound to a thread")
+	}
+
+	var (
+		response ThreadResponse
+		err      error
+	)
+	if threadID == "" {
+		response, err = r.ThreadStart(ctx, ThreadStartParams{})
+	} else {
+		response, err = r.ThreadResume(ctx, ThreadResumeParams{ThreadID: threadID})
+	}
+	if err != nil {
+		return "", err
+	}
+
+	r.threadID = response.Thread.ID
+	return r.threadID, nil
+}
+
+// ThreadRead queries a thread without resuming or binding it.
+func (r *Runtime) ThreadRead(ctx context.Context, params ThreadReadParams) (ThreadResponse, error) {
+	var response ThreadResponse
+	if err := r.call(ctx, MethodThreadRead, params, &response); err != nil {
+		return response, err
+	}
+	if response.Thread.ID != params.ThreadID || response.Thread.Status.Type == "" {
+		return response, fmt.Errorf("invalid thread/read response for %q", params.ThreadID)
+	}
+	return response, nil
+}
+
+// ErrRuntimeConnect distinguishes connection failures from initialization failures.
+var ErrRuntimeConnect = errors.New("connect codex runtime")
+
 func NewRuntimeContext(ctx context.Context, sockPath string) (*Runtime, error) {
 	c, err := NewUnixConnContext(ctx, sockPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrRuntimeConnect, err)
 	}
 
 	r := newRuntime(c)

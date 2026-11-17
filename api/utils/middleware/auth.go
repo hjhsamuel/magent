@@ -27,9 +27,24 @@ func AuthMiddleware(ctx *gin.Context) {
 		return
 	}
 
-	ctx.Set(utils.AuthKey, &utils.Auth{
+	auth := &utils.Auth{
 		Raw:   claim,
 		Token: t.Raw,
-	})
+	}
+	if v, ok := claim["id"].(int); ok {
+		auth.ID = v
+	}
+	if v, ok := claim["name"].(string); ok {
+		auth.Name = v
+	}
+	if auth.ID == 0 || auth.Name == "" {
+		ctx.AbortWithStatusJSON(http.StatusUnauthorized, &utils.Response{
+			Code:    http.StatusUnauthorized,
+			Message: "unauthorized",
+		})
+		return
+	}
+
+	ctx.Set(utils.AuthKey, auth)
 	ctx.Next()
 }

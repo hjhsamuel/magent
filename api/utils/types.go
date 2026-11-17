@@ -33,6 +33,8 @@ func GetJwtSalt() string {
 }
 
 type Auth struct {
+	ID    int
+	Name  string
 	Raw   jwt.MapClaims
 	Token string
 }

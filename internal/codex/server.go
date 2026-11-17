@@ -122,7 +122,7 @@ func (s *Server) closeProcess(expected *exec.Cmd) {
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 	}
 	for _, r := range children {
-		r.waitClosed()
+		r.WaitClosed()
 	}
 	<-done
 	s.mu.Lock()
@@ -146,14 +146,12 @@ func (s *Server) connect(ctx context.Context) (*Runtime, error) {
 			return nil, errors.New("codex server exited")
 		default:
 		}
-		c, err := NewUnixConnContext(ctx, s.socket)
+		r, err := NewRuntimeContext(ctx, s.socket)
 		if err == nil {
-			r := newRuntime(c)
-			if err = r.init(ctx); err != nil {
-				r.Close()
-				return nil, err
-			}
 			return r, nil
+		}
+		if !errors.Is(err, ErrRuntimeConnect) {
+			return nil, err
 		}
 		timer := time.NewTimer(50 * time.Millisecond)
 		select {
@@ -170,9 +168,11 @@ func (s *Server) connect(ctx context.Context) (*Runtime, error) {
 func (s *Server) OpenRuntime(ctx context.Context, threadID string) (*Runtime, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	if s.stopping {
 		return nil, errors.New("codex server stopping")
 	}
+
 	if r := s.runtimes[threadID]; r != nil {
 		select {
 		case <-r.Done():
@@ -181,30 +181,27 @@ func (s *Server) OpenRuntime(ctx context.Context, threadID string) (*Runtime, er
 			return r, nil
 		}
 	}
+
 	r, err := s.connect(ctx)
 	if err != nil {
 		return nil, err
 	}
-	var response ThreadResponse
-	if threadID == "" {
-		response, err = r.ThreadStart(ctx, ThreadStartParams{})
-	} else {
-		response, err = r.ThreadResume(ctx, ThreadResumeParams{ThreadID: threadID})
-	}
+	threadID, err = r.OpenThread(ctx, threadID)
 	if err != nil {
 		r.Close()
 		return nil, err
 	}
-	r.threadID = response.Thread.ID
-	s.runtimes[r.threadID] = r
+	s.runtimes[threadID] = r
+
 	go func() {
-		r.waitClosed()
+		r.WaitClosed()
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		if s.runtimes[r.threadID] == r {
-			delete(s.runtimes, r.threadID)
+		if s.runtimes[threadID] == r {
+			delete(s.runtimes, threadID)
 		}
 	}()
+
 	return r, nil
 }
 
@@ -248,20 +245,9 @@ func (s *Server) ThreadStatuses(ctx context.Context, threadIDs []string) (map[st
 			continue
 		}
 
-		var response ThreadResponse
-		if err = r.call(
-			ctx,
-			MethodThreadRead,
-			ThreadReadParams{
-				ThreadID: id,
-			},
-			&response,
-		); err != nil {
+		response, err := r.ThreadRead(ctx, ThreadReadParams{ThreadID: id})
+		if err != nil {
 			return statuses, fmt.Errorf("read thread %q: %w", id, err)
-		}
-
-		if response.Thread.ID != id || response.Thread.Status.Type == "" {
-			return statuses, fmt.Errorf("invalid thread/read response for %q", id)
 		}
 		statuses[id] = response.Thread.Status
 	}

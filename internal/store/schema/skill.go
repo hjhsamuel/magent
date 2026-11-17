@@ -13,6 +13,6 @@ type Skill struct {
 	Name        string        `bson:"name"`
 	Description string        `bson:"description"`
 	Url         string        `bson:"url"`
-	Creator     string        `bson:"creator"`
+	Creator     int           `bson:"creator"`
 	CreatedAt   time.Time     `bson:"created_at"`
 }
