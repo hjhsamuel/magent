@@ -1,0 +1,98 @@
+// Package sse provides bounded, reconnectable single-producer/single-consumer streams.
+package ringbuffer
+
+import (
+	"sync"
+)
+
+// RingBuffer must not be copied. Its zero value is ready for use.
+// IDs are assigned monotonically from 1. Data is owned by the caller and must
+// remain immutable after publication, including any objects referenced by Data.
+type RingBuffer struct {
+	mu           sync.Mutex
+	items        [Capacity]Payload
+	last, marker uint64
+	closed       bool
+	producer     *Producer
+	consumer     *Consumer
+}
+
+func (b *RingBuffer) ConnectProducer() (*Producer, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.closed {
+		return nil, ErrClosed
+	}
+	if b.producer != nil {
+		return nil, ErrProducerConnected
+	}
+	p := &Producer{b: b}
+	b.producer = p
+	return p, nil
+}
+
+// ConnectConsumer resumes after lastID. Zero requests all retained messages.
+// An overwritten ID resumes AT the latest retained part_end/complete marker,
+// or at the oldest retained message if no marker survives. The same recovery
+// applies when a connected consumer falls behind. Future IDs are rejected.
+func (b *RingBuffer) ConnectConsumer(lastID uint64) (*Consumer, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.closed {
+		return nil, ErrClosed
+	}
+	if b.consumer != nil {
+		return nil, ErrConsumerConnected
+	}
+	if lastID > b.last {
+		return nil, ErrInvalidID
+	}
+
+	c := &Consumer{
+		b:    b,
+		next: lastID + 1,
+		wake: make(chan struct{}, 1),
+	}
+	if lastID == 0 {
+		c.next = b.oldest()
+	} else if lastID < b.oldest() {
+		c.next = b.recovery()
+	}
+	b.consumer = c
+	return c, nil
+}
+
+func (b *RingBuffer) oldest() uint64 {
+	if b.last >= Capacity {
+		return b.last - Capacity + 1
+	}
+	return 1
+}
+
+func (b *RingBuffer) recovery() uint64 {
+	if b.marker >= b.oldest() {
+		return b.marker
+	}
+	return b.oldest()
+}
+
+// Close immediately terminates the stream and releases retained payloads.
+func (b *RingBuffer) Close() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.closed = true
+	if b.consumer != nil {
+		b.consumer.signal()
+	}
+	b.consumer, b.producer = nil, nil
+	clear(b.items[:])
+}
+
+func NewRingBuffer() *RingBuffer {
+	return &RingBuffer{
+		items: [Capacity]Payload{},
+	}
+}
