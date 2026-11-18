@@ -116,7 +116,6 @@ func (s *Service) turnStart(
 			)
 			_, _ = producer.Write(ringbuffer.Payload{
 				Type: ringbuffer.SSEventComplete,
-				Data: ringbuffer.CommonEvent{Data: completed.Summary},
 			})
 
 			return

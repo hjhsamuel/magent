@@ -36,5 +36,6 @@ func (p *Producer) Close() {
 
 	if p.b.producer == p {
 		p.b.producer = nil
+		p.b.startIdleTimer()
 	}
 }

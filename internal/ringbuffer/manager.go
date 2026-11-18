@@ -2,8 +2,8 @@ package ringbuffer
 
 import "sync"
 
-// Manager owns streams until Delete or Close. Its zero value is usable.
-// It has no per-stream timers or goroutines; owners delete expired streams.
+// Manager owns streams and expires them after ten continuous seconds idle.
+// Its zero value is usable.
 // Stream reads and writes never acquire the manager lock.
 type Manager struct {
 	mu      sync.RWMutex
@@ -22,13 +22,27 @@ func (m *Manager) Create(id string) (*RingBuffer, error) {
 		return nil, ErrExists
 	}
 
+	return m.createLocked(id), nil
+}
+
+func (m *Manager) createLocked(id string) *RingBuffer {
 	if m.streams == nil {
 		m.streams = make(map[string]*RingBuffer)
 	}
 
 	b := NewRingBuffer()
+	b.mu.Lock()
+	b.unregister = func() {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if m.streams[id] == b {
+			delete(m.streams, id)
+		}
+	}
+	b.startIdleTimer()
+	b.mu.Unlock()
 	m.streams[id] = b
-	return b, nil
+	return b
 }
 
 func (m *Manager) Get(id string) (*RingBuffer, bool) {
@@ -64,12 +78,7 @@ func (m *Manager) CreateOrGet(id string) (*RingBuffer, error) {
 	if b, ok := m.streams[id]; ok {
 		return b, nil
 	}
-	if m.streams == nil {
-		m.streams = make(map[string]*RingBuffer)
-	}
-	b = NewRingBuffer()
-	m.streams[id] = b
-	return b, nil
+	return m.createLocked(id), nil
 }
 
 func (m *Manager) Delete(id string) {

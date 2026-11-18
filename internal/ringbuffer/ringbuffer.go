@@ -3,6 +3,7 @@ package ringbuffer
 
 import (
 	"sync"
+	"time"
 )
 
 // RingBuffer must not be copied. Its zero value is ready for use.
@@ -15,6 +16,32 @@ type RingBuffer struct {
 	closed       bool
 	producer     *Producer
 	consumer     *Consumer
+	idleTimer    *time.Timer
+	unregister   func()
+}
+
+// Called with mu held whenever a managed stream becomes idle.
+func (b *RingBuffer) startIdleTimer() {
+	if b.unregister == nil || b.producer != nil || b.consumer != nil {
+		return
+	}
+	var timer *time.Timer
+	timer = time.AfterFunc(10*time.Second, func() {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		// A stopped callback may already be waiting for the lock.
+		if b.idleTimer == timer {
+			b.closeLocked()
+		}
+	})
+	b.idleTimer = timer
+}
+
+func (b *RingBuffer) stopIdleTimer() {
+	if b.idleTimer != nil {
+		b.idleTimer.Stop()
+		b.idleTimer = nil
+	}
 }
 
 func (b *RingBuffer) ConnectProducer() (*Producer, error) {
@@ -29,6 +56,7 @@ func (b *RingBuffer) ConnectProducer() (*Producer, error) {
 	}
 	p := &Producer{b: b}
 	b.producer = p
+	b.stopIdleTimer()
 	return p, nil
 }
 
@@ -58,6 +86,7 @@ func (b *RingBuffer) ConnectConsumer(lastID uint64) (*Consumer, error) {
 		c.next = b.recovery()
 	}
 	b.consumer = c
+	b.stopIdleTimer()
 	return c, nil
 }
 
@@ -80,6 +109,15 @@ func (b *RingBuffer) Close() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
+	b.closeLocked()
+}
+
+func (b *RingBuffer) closeLocked() {
+	b.stopIdleTimer()
+	if b.unregister != nil {
+		b.unregister()
+		b.unregister = nil
+	}
 	b.closed = true
 	if b.consumer != nil {
 		b.consumer.signal()

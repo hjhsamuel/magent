@@ -94,5 +94,6 @@ func (c *Consumer) Close() {
 	if c.b.consumer == c {
 		c.b.consumer = nil
 		c.signal()
+		c.b.startIdleTimer()
 	}
 }
