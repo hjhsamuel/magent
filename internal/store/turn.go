@@ -62,8 +62,26 @@ func (d *Store) StartTurn(
 	var id bson.ObjectID
 	now := time.Now()
 	_, err = session.WithTransaction(ctx, func(sc context.Context) (any, error) {
-		result, err := d.getCollection(schema.TurnCollection).InsertOne(sc, &schema.Turn{
+		result := d.getCollection(schema.SessionCollection).FindOneAndUpdate(
+			sc,
+			bson.M{"_id": sessionId, "status": bson.M{"$ne": schema.SessionStateRunning}},
+			bson.M{
+				"$set": bson.M{"status": schema.SessionStateRunning, "updated_at": now},
+				"$inc": bson.M{"seq": 1},
+			},
+		)
+		if err = result.Err(); err != nil {
+			return nil, err
+		}
+
+		var obj schema.Session
+		if err = result.Decode(&obj); err != nil {
+			return nil, err
+		}
+
+		res, err := d.getCollection(schema.TurnCollection).InsertOne(sc, &schema.Turn{
 			Session:   sessionId,
+			Index:     obj.Seq,
 			CreatedAt: now,
 			Messages: []*schema.Message{
 				{
@@ -77,16 +95,7 @@ func (d *Store) StartTurn(
 			return nil, err
 		}
 
-		id = result.InsertedID.(bson.ObjectID)
-
-		_, err = d.getCollection(schema.SessionCollection).UpdateOne(
-			sc,
-			bson.M{"_id": sessionId, "status": bson.M{"$ne": schema.SessionStateRunning}},
-			bson.M{"$set": bson.M{"status": schema.SessionStateRunning, "updated_at": now}},
-		)
-		if err != nil {
-			return nil, err
-		}
+		id = res.InsertedID.(bson.ObjectID)
 
 		return nil, nil
 	})

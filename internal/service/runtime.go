@@ -12,7 +12,6 @@ import (
 	"github.com/hjhsamuel/magent/internal/ringbuffer"
 	"github.com/hjhsamuel/magent/internal/store/schema"
 	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 func (s *Service) Chat(
@@ -50,7 +49,7 @@ func (s *Service) Chat(
 		return err
 	}
 
-	go s.turnStart(sid, r, producer)
+	go s.turnStart(sid, obj.Seq, r, producer)
 
 	turnId, err := s.store.StartTurn(context.Background(), sid, content)
 	if err != nil {
@@ -90,6 +89,7 @@ func (s *Service) Chat(
 
 func (s *Service) turnStart(
 	sessionId bson.ObjectID,
+	turnIndex uint64,
 	r *codex.Runtime,
 	producer *ringbuffer.Producer,
 ) {
@@ -104,31 +104,22 @@ func (s *Service) turnStart(
 				continue
 			}
 
-			var filter bson.M
-			if completed.TurnID == "" {
-				turns, err := s.store.GetTurnList(
-					context.Background(),
-					bson.M{"session": sessionId},
-					options.Find().SetSort(bson.M{"created_at": -1}).SetLimit(1),
-				)
-				if err != nil || len(turns) == 0 {
-					return
-				}
-
-				filter = bson.M{"_id": turns[0].ID}
-			} else {
-				filter = bson.M{"session": sessionId, "turn_id": completed.TurnID}
-			}
-			_ = s.store.TurnComplete(context.Background(), r.ThreadID(), filter, &schema.Message{
-				Role:      schema.MessageRoleModel,
-				Content:   completed.Summary,
-				CreatedAt: time.Now(),
-			})
-
+			_ = s.store.TurnComplete(
+				context.Background(),
+				r.ThreadID(),
+				bson.M{"session": sessionId, "index": turnIndex},
+				&schema.Message{
+					Role:      schema.MessageRoleModel,
+					Content:   completed.Summary,
+					CreatedAt: time.Now(),
+				},
+			)
 			_, _ = producer.Write(ringbuffer.Payload{
 				Type: ringbuffer.SSEventComplete,
 				Data: ringbuffer.CommonEvent{Data: completed.Summary},
 			})
+
+			return
 		case <-r.Done():
 			return
 		}
