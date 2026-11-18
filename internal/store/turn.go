@@ -12,8 +12,8 @@ import (
 func (d *Store) TurnComplete(
 	ctx context.Context,
 	runId string,
-	turnId string,
-	content string,
+	turnFilter bson.M,
+	message *schema.Message,
 ) error {
 	session, err := d.StartSession()
 	if err != nil {
@@ -21,16 +21,11 @@ func (d *Store) TurnComplete(
 	}
 	defer session.EndSession(ctx)
 
-	curTime := time.Now()
 	_, err = session.WithTransaction(ctx, func(sc context.Context) (any, error) {
 		_, err = d.getCollection(schema.TurnCollection).UpdateOne(
 			sc,
-			bson.M{"turn_id": turnId},
-			bson.M{"$push": bson.M{"messages": &schema.Message{
-				Role:      schema.MessageRoleModel,
-				Content:   content,
-				CreatedAt: curTime,
-			}}},
+			turnFilter,
+			bson.M{"$push": bson.M{"messages": message}},
 		)
 		if err != nil {
 			return nil, err
@@ -41,7 +36,7 @@ func (d *Store) TurnComplete(
 			bson.M{"run_id": runId},
 			bson.M{"$set": bson.M{
 				"status":     schema.SessionStateCompleted,
-				"updated_at": curTime,
+				"updated_at": message.CreatedAt,
 			}},
 		)
 		if err != nil {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/hjhsamuel/magent/api/utils"
 	"github.com/hjhsamuel/magent/internal/codex"
@@ -65,7 +66,16 @@ func (s *Service) Chat(
 	if err != nil {
 		_ = r.Close()
 		producer.Close()
-		_ = s.store.TurnComplete(context.Background(), obj.RunId, "", err.Error())
+		_ = s.store.TurnComplete(
+			context.Background(),
+			obj.RunId,
+			bson.M{"_id": turnId},
+			&schema.Message{
+				Role:      schema.MessageRoleModel,
+				Content:   err.Error(),
+				CreatedAt: time.Now(),
+			},
+		)
 		return err
 	} else {
 		_ = s.store.UpdateTurn(
@@ -93,6 +103,8 @@ func (s *Service) turnStart(
 			if completed == nil {
 				continue
 			}
+
+			var filter bson.M
 			if completed.TurnID == "" {
 				turns, err := s.store.GetTurnList(
 					context.Background(),
@@ -102,9 +114,17 @@ func (s *Service) turnStart(
 				if err != nil || len(turns) == 0 {
 					return
 				}
-				completed.TurnID = turns[0].TurnID
+
+				filter = bson.M{"_id": turns[0].ID}
+			} else {
+				filter = bson.M{"session": sessionId, "turn_id": completed.TurnID}
 			}
-			_ = s.store.TurnComplete(context.Background(), r.ThreadID(), completed.TurnID, completed.Summary)
+			_ = s.store.TurnComplete(context.Background(), r.ThreadID(), filter, &schema.Message{
+				Role:      schema.MessageRoleModel,
+				Content:   completed.Summary,
+				CreatedAt: time.Now(),
+			})
+
 			_, _ = producer.Write(ringbuffer.Payload{
 				Type: ringbuffer.SSEventComplete,
 				Data: ringbuffer.CommonEvent{Data: completed.Summary},
