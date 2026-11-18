@@ -22,20 +22,49 @@ const requestTimeout = 30 * time.Second
 // Keep draining Events independently of RPC/approval calls: backpressure pauses
 // the shared protocol reader, including responses. Final items must reconcile deltas.
 type Runtime struct {
-	conn       MessageTransport
-	threadID   string
-	exited     chan struct{}
-	mu         sync.Mutex
-	writeMu    sync.Mutex
-	pending    map[string]chan Message
-	approvals  map[string]chan struct{}
-	requestIDs map[string]json.RawMessage
-	serverIDs  map[string]string
-	nextID     uint64
-	events     chan Message
-	done       chan struct{}
-	err        error
-	once       sync.Once
+	conn               MessageTransport
+	threadID           string
+	exited             chan struct{}
+	mu                 sync.Mutex
+	writeMu            sync.Mutex
+	pending            map[string]chan Message
+	approvals          map[string]*approvalWaiter
+	requestsByPublicID map[string]Message
+	serverIDs          map[string]string
+	nextID             uint64
+	events             chan Message
+	done               chan struct{}
+	err                error
+	once               sync.Once
+}
+
+type approvalWaiter struct {
+	publicID string
+	done     chan struct{}
+}
+
+// ApprovalRequests returns a snapshot of cached requests keyed by the JSON-encoded
+// public ID from Events. Each message retains its original server ID.
+func (r *Runtime) ApprovalRequests() map[string]Message {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	requests := make(map[string]Message, len(r.requestsByPublicID))
+	for publicID, request := range r.requestsByPublicID {
+		requests[publicID] = cloneRequest(request)
+	}
+	return requests
+}
+
+func cloneRequest(m Message) Message {
+	m.ID = bytes.Clone(m.ID)
+	m.Params = bytes.Clone(m.Params)
+	m.Result = bytes.Clone(m.Result)
+	if m.Error != nil {
+		e := *m.Error
+		e.Data = bytes.Clone(e.Data)
+		m.Error = &e
+	}
+	return m
 }
 
 func (r *Runtime) init(ctx context.Context) error {
@@ -93,7 +122,7 @@ func (r *Runtime) stop(err error) {
 	r.once.Do(func() {
 		r.mu.Lock()
 		r.err = err
-		r.requestIDs = nil
+		r.requestsByPublicID = nil
 		r.serverIDs = nil
 		close(r.done)
 		r.mu.Unlock()
@@ -154,11 +183,11 @@ func (r *Runtime) readLoop() {
 			key := string(bytes.TrimSpace(resolved.RequestID))
 			publicID, known := r.serverIDs[key]
 			delete(r.serverIDs, key)
-			delete(r.requestIDs, publicID)
-			ch := r.approvals[key]
-			if ch != nil {
+			delete(r.requestsByPublicID, publicID)
+			if waiter := r.approvals[key]; waiter != nil {
+				publicID, known = waiter.publicID, true
 				delete(r.approvals, key)
-				close(ch)
+				close(waiter.done)
 			}
 			r.mu.Unlock()
 
@@ -177,7 +206,6 @@ func (r *Runtime) readLoop() {
 				return
 			}
 			publicKey := string(public)
-			originalID := append(json.RawMessage(nil), m.ID...)
 			key := string(bytes.TrimSpace(m.ID))
 
 			r.mu.Lock()
@@ -189,16 +217,16 @@ func (r *Runtime) readLoop() {
 			default:
 			}
 
-			if r.requestIDs == nil {
-				r.requestIDs = make(map[string]json.RawMessage)
+			if r.requestsByPublicID == nil {
+				r.requestsByPublicID = make(map[string]Message)
 				r.serverIDs = make(map[string]string)
 			}
-			if _, exists := r.serverIDs[key]; exists {
+			if _, exists := r.serverIDs[key]; exists || r.approvals[key] != nil {
 				r.mu.Unlock()
 				r.stop(errors.New("duplicate server request ID"))
 				return
 			}
-			r.requestIDs[publicKey] = originalID
+			r.requestsByPublicID[publicKey] = cloneRequest(m)
 			r.serverIDs[key] = publicKey
 			r.mu.Unlock()
 
@@ -248,7 +276,7 @@ func (r *Runtime) call(ctx context.Context, method Method, params, result any) (
 
 	r.mu.Lock()
 	r.nextID++
-	id := strconv.FormatUint(r.nextID, 10)
+	id := fmt.Sprintf("codex_%d", r.nextID)
 	ch := make(chan Message, 1)
 	r.pending[id] = ch
 	r.mu.Unlock()
@@ -445,25 +473,29 @@ func (r *Runtime) replyAndWait(ctx context.Context, id json.RawMessage, response
 	ack := make(chan struct{})
 
 	r.mu.Lock()
-	originalID, exists := r.requestIDs[publicID]
+	request, exists := r.requestsByPublicID[publicID]
 	if !exists {
 		r.mu.Unlock()
 		return errors.New("unknown or expired server request ID")
 	}
+	originalID := request.ID
 	key := string(bytes.TrimSpace(originalID))
 	if r.approvals == nil {
-		r.approvals = make(map[string]chan struct{})
+		r.approvals = make(map[string]*approvalWaiter)
 	}
 	if _, exists := r.approvals[key]; exists {
 		r.mu.Unlock()
 		return errors.New("server request response already pending")
 	}
-	r.approvals[key] = ack
+	waiter := &approvalWaiter{publicID: publicID, done: ack}
+	r.approvals[key] = waiter
 	r.mu.Unlock()
 
 	defer func() {
 		r.mu.Lock()
-		delete(r.approvals, key)
+		if r.approvals[key] == waiter {
+			delete(r.approvals, key)
+		}
 		r.mu.Unlock()
 	}()
 
@@ -477,6 +509,12 @@ func (r *Runtime) replyAndWait(ctx context.Context, id json.RawMessage, response
 		if err != nil {
 			return fmt.Errorf("send server request response: %w", err)
 		}
+		r.mu.Lock()
+		delete(r.requestsByPublicID, publicID)
+		if r.serverIDs[key] == publicID {
+			delete(r.serverIDs, key)
+		}
+		r.mu.Unlock()
 	case <-ctx.Done():
 		r.stop(ctx.Err())
 		return fmt.Errorf("send server request response: %w", ctx.Err())

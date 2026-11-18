@@ -46,3 +46,22 @@ func (d *Store) UpdateSession(
 	_, err := d.getCollection(schema.SessionCollection).UpdateOne(ctx, filter, update)
 	return err
 }
+
+func (d *Store) FindSession(
+	ctx context.Context,
+	filter bson.M,
+	opts ...options.Lister[options.FindOptions],
+) ([]*schema.Session, error) {
+	cursor, err := d.getCollection(schema.SessionCollection).Find(ctx, filter, opts...)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var res []*schema.Session
+	if err = cursor.All(ctx, &res); err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
