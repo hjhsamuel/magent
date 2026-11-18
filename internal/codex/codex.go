@@ -436,11 +436,14 @@ func (r *Runtime) RespondElicitation(
 func (r *Runtime) replyAndWait(ctx context.Context, id json.RawMessage, response any) error {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
+
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+
 	publicID := string(bytes.TrimSpace(id))
 	ack := make(chan struct{})
+
 	r.mu.Lock()
 	originalID, exists := r.requestIDs[publicID]
 	if !exists {
@@ -457,9 +460,18 @@ func (r *Runtime) replyAndWait(ctx context.Context, id json.RawMessage, response
 	}
 	r.approvals[key] = ack
 	r.mu.Unlock()
-	defer func() { r.mu.Lock(); delete(r.approvals, key); r.mu.Unlock() }()
+
+	defer func() {
+		r.mu.Lock()
+		delete(r.approvals, key)
+		r.mu.Unlock()
+	}()
+
 	sent := make(chan error, 1)
-	go func() { sent <- r.reply(originalID, response, nil) }()
+	go func() {
+		sent <- r.reply(originalID, response, nil)
+	}()
+
 	select {
 	case err := <-sent:
 		if err != nil {
@@ -471,6 +483,7 @@ func (r *Runtime) replyAndWait(ctx context.Context, id json.RawMessage, response
 	case <-r.done:
 		return r.Err()
 	}
+
 	select {
 	case <-ack:
 		return nil

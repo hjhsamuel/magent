@@ -125,11 +125,6 @@ func (s *Service) turnStart(
 	}
 }
 
-type completedTurn struct {
-	TurnID  string
-	Summary string
-}
-
 // parseRuntimeMessage returns a completion even when its summary is empty.
 // The caller persists it before publishing the complete event.
 func (s *Service) parseRuntimeMessage(producer *ringbuffer.Producer, e codex.Message) *completedTurn {
@@ -261,19 +256,51 @@ func (s *Service) parseRuntimeMessage(producer *ringbuffer.Producer, e codex.Mes
 	return nil
 }
 
-func turnSummary(turn codex.Turn) string {
-	if turn.Error != nil {
-		return turn.Error.Message
+func (s *Service) Approve(
+	sessionId string,
+	id json.RawMessage,
+	accept bool,
+	method string,
+	result json.RawMessage,
+) error {
+	var decision codex.ApprovalDecision
+	if accept {
+		decision = codex.ApprovalAccept
+	} else {
+		decision = codex.ApprovalDecline
 	}
-	var parts []string
-	for _, raw := range turn.Items {
-		var item struct {
-			Type string
-			Text string
-		}
-		if json.Unmarshal(raw, &item) == nil && item.Type == "agentMessage" {
-			parts = append(parts, item.Text)
-		}
+
+	sid, err := bson.ObjectIDFromHex(sessionId)
+	if err != nil {
+		return err
 	}
-	return strings.Join(parts, "\n")
+	obj, err := s.store.GetSession(context.Background(), bson.M{"_id": sid})
+	if err != nil {
+		return err
+	}
+	// 不在运行状态，说明轮次已结束
+	if obj.Status != schema.SessionStateRunning {
+		return errors.New("id not found")
+	}
+
+	r := s.cm.GetRuntime(obj.RunId)
+	if r == nil {
+		return errors.New("runtime not found")
+	}
+	switch codex.Method(method) {
+	case codex.MethodCommandExecutionApproval, codex.MethodFileChangeApproval:
+		return r.Approve(context.Background(), id, decision)
+	case codex.MethodPermissionsApproval:
+		var permission codex.GrantedPermissionProfile
+		if decision == codex.ApprovalAccept {
+			if err = json.Unmarshal(result, &permission); err != nil {
+				return err
+			}
+		}
+		return r.ApprovePermissions(context.Background(), id, decision, permission)
+	case codex.MethodMcpServerElicitation:
+		return r.RespondElicitation(context.Background(), id, decision, result)
+	default:
+		return errors.New("unknown method")
+	}
 }

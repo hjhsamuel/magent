@@ -163,6 +163,30 @@ func (s *Server) connect(ctx context.Context) (*Runtime, error) {
 	}
 }
 
+// GetRuntime returns the active connection for threadID, or nil if unavailable.
+func (s *Server) GetRuntime(threadID string) *Runtime {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stopping {
+		return nil
+	}
+	return s.activeRuntimeLocked(threadID)
+}
+
+// activeRuntimeLocked is called with mu held.
+func (s *Server) activeRuntimeLocked(threadID string) *Runtime {
+	r := s.runtimes[threadID]
+	if r != nil {
+		select {
+		case <-r.Done():
+			delete(s.runtimes, threadID)
+			return nil
+		default:
+		}
+	}
+	return r
+}
+
 // OpenRuntime creates a thread when threadID is empty, otherwise resumes it.
 // Repeated opens of an active thread return its existing Runtime.
 func (s *Server) OpenRuntime(ctx context.Context, threadID string) (*Runtime, error) {
@@ -173,13 +197,8 @@ func (s *Server) OpenRuntime(ctx context.Context, threadID string) (*Runtime, er
 		return nil, errors.New("codex server stopping")
 	}
 
-	if r := s.runtimes[threadID]; r != nil {
-		select {
-		case <-r.Done():
-			delete(s.runtimes, threadID)
-		default:
-			return r, nil
-		}
+	if r := s.activeRuntimeLocked(threadID); r != nil {
+		return r, nil
 	}
 
 	r, err := s.connect(ctx)
