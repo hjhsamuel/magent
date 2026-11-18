@@ -16,11 +16,13 @@ import (
 )
 
 func (s *Service) Listen(
-	ctx *gin.Context,
+	c *gin.Context,
 	auth *utils.Auth,
 	sessionId string,
 	seq uint64,
 ) error {
+	ctx := c.Request.Context()
+
 	var (
 		id    string
 		runId string
@@ -72,14 +74,14 @@ func (s *Service) Listen(
 	}
 	defer consumer.Close()
 
-	ctx.Writer.Header().Set("Content-Type", "text/event-stream")
-	ctx.Writer.Header().Set("Cache-Control", "no-cache")
-	ctx.Writer.Header().Set("Connection", "keep-alive")
-	ctx.Writer.Header().Set("Transfer-Encoding", "chunked")
-	ctx.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-	ctx.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("Transfer-Encoding", "chunked")
+	c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
 
-	if err = s.pushSSEvent(ctx, ringbuffer.Payload{
+	if err = s.pushSSEvent(c, ringbuffer.Payload{
 		Type: ringbuffer.SSEventInit,
 		Data: ringbuffer.CommonEvent{Data: id},
 	}); err != nil {
@@ -90,7 +92,7 @@ func (s *Service) Listen(
 	if err != nil {
 		return err
 	}
-	if err = s.pushSSEvent(ctx, events...); err != nil {
+	if err = s.pushSSEvent(c, events...); err != nil {
 		return err
 	}
 
@@ -102,7 +104,7 @@ func (s *Service) Listen(
 			}
 			return err
 		}
-		if err = s.pushSSEvent(ctx, item); err != nil {
+		if err = s.pushSSEvent(c, item); err != nil {
 			return err
 		}
 	}
@@ -113,11 +115,9 @@ func (s *Service) pushSSEvent(ctx *gin.Context, events ...ringbuffer.Payload) er
 		return nil
 	}
 
-	ctx.Request.Context()
-
 	for _, event := range events {
 		select {
-		case <-ctx.Done():
+		case <-ctx.Request.Context().Done():
 			return ctx.Err()
 		default:
 			ctx.Render(-1, sse.Event{
