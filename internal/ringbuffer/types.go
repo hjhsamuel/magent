@@ -3,9 +3,13 @@ package ringbuffer
 import (
 	"encoding/json"
 	"errors"
+	"time"
 )
 
-const Capacity = 1024
+const (
+	Capacity        = 1024
+	MaxIdleDuration = 10 * time.Second
+)
 
 var (
 	ErrClosed            = errors.New("sse: closed")

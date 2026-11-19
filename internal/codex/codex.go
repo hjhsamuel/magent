@@ -29,7 +29,7 @@ type Runtime struct {
 	writeMu            sync.Mutex
 	pending            map[string]chan Message
 	approvals          map[string]*approvalWaiter
-	requestsByPublicID map[string]Message
+	requestsByPublicID map[string]cachedRequest
 	serverIDs          map[string]string
 	nextID             uint64
 	events             chan Message
@@ -38,19 +38,24 @@ type Runtime struct {
 	once               sync.Once
 }
 
+type cachedRequest struct {
+	message  Message
+	serverID string // JSON-encoded ID used on the wire.
+}
+
 type approvalWaiter struct {
 	publicID string
 	done     chan struct{}
 }
 
 // ApprovalRequests returns a snapshot of cached requests keyed by the JSON-encoded
-// public ID from Events. Each message retains its original server ID.
+// public ID from Events. Each message carries that same ID for replies.
 func (r *Runtime) ApprovalRequests() map[string]Message {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	requests := make(map[string]Message, len(r.requestsByPublicID))
 	for publicID, request := range r.requestsByPublicID {
-		requests[publicID] = cloneRequest(request)
+		requests[publicID] = cloneRequest(request.message)
 	}
 	return requests
 }
@@ -218,7 +223,7 @@ func (r *Runtime) readLoop() {
 			}
 
 			if r.requestsByPublicID == nil {
-				r.requestsByPublicID = make(map[string]Message)
+				r.requestsByPublicID = make(map[string]cachedRequest)
 				r.serverIDs = make(map[string]string)
 			}
 			if _, exists := r.serverIDs[key]; exists || r.approvals[key] != nil {
@@ -226,11 +231,13 @@ func (r *Runtime) readLoop() {
 				r.stop(errors.New("duplicate server request ID"))
 				return
 			}
-			r.requestsByPublicID[publicKey] = cloneRequest(m)
+			m.ID = public
+			r.requestsByPublicID[publicKey] = cachedRequest{
+				message:  cloneRequest(m),
+				serverID: key,
+			}
 			r.serverIDs[key] = publicKey
 			r.mu.Unlock()
-
-			m.ID = public
 		}
 
 		if ignoreNotification(m) {
@@ -478,8 +485,7 @@ func (r *Runtime) replyAndWait(ctx context.Context, id json.RawMessage, response
 		r.mu.Unlock()
 		return errors.New("unknown or expired server request ID")
 	}
-	originalID := request.ID
-	key := string(bytes.TrimSpace(originalID))
+	key := request.serverID
 	if r.approvals == nil {
 		r.approvals = make(map[string]*approvalWaiter)
 	}
@@ -501,7 +507,7 @@ func (r *Runtime) replyAndWait(ctx context.Context, id json.RawMessage, response
 
 	sent := make(chan error, 1)
 	go func() {
-		sent <- r.reply(originalID, response, nil)
+		sent <- r.reply(json.RawMessage(key), response, nil)
 	}()
 
 	select {

@@ -1,5 +1,7 @@
 package codex
 
+const sockDir = "/run/codex"
+
 type Config struct {
 	McpServers map[string]McpServer `toml:"mcp_servers"`
 }

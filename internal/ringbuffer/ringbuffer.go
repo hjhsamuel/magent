@@ -26,7 +26,7 @@ func (b *RingBuffer) startIdleTimer() {
 		return
 	}
 	var timer *time.Timer
-	timer = time.AfterFunc(10*time.Second, func() {
+	timer = time.AfterFunc(MaxIdleDuration, func() {
 		b.mu.Lock()
 		defer b.mu.Unlock()
 		// A stopped callback may already be waiting for the lock.

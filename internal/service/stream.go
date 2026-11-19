@@ -23,13 +23,17 @@ func (s *Service) Listen(
 ) error {
 	ctx := c.Request.Context()
 
+	cs, err := s.cm.CreateOrGet(auth.ID)
+	if err != nil {
+		return err
+	}
+
 	var (
 		id    string
 		runId string
-		err   error
 	)
 	if sessionId == "" {
-		r, err := s.cm.OpenRuntime(context.Background(), "")
+		r, err := cs.OpenRuntime(context.Background(), "")
 		if err != nil {
 			return err
 		}
@@ -44,7 +48,7 @@ func (s *Service) Listen(
 			CreatedAt: time.Now(),
 		})
 		if err != nil {
-			_ = s.cm.RemoveRuntime(runId)
+			_ = r.Close()
 			return err
 		}
 		id = sid.Hex()
@@ -80,6 +84,20 @@ func (s *Service) Listen(
 	c.Writer.Header().Set("Transfer-Encoding", "chunked")
 	c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
+
+	// 补偿：可能因断连导致的审批请求未送达
+	if r := cs.GetRuntime(runId); r != nil {
+		approveReqs := r.ApprovalRequests()
+		if len(approveReqs) != 0 {
+			for _, req := range approveReqs {
+				event, _, err := parseRuntimeMessage(req)
+				if err != nil {
+					continue
+				}
+				_ = s.pushSSEvent(c, *event)
+			}
+		}
+	}
 
 	if err = s.pushSSEvent(c, ringbuffer.Payload{
 		Type: ringbuffer.SSEventInit,

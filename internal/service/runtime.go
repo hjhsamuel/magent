@@ -42,7 +42,12 @@ func (s *Service) Chat(
 		return err
 	}
 
-	r, err := s.cm.OpenRuntime(context.Background(), obj.RunId)
+	cs := s.cm.Get(auth.ID)
+	if cs == nil {
+		producer.Close()
+		return err
+	}
+	r, err := cs.OpenRuntime(context.Background(), obj.RunId)
 	if err != nil {
 		producer.Close()
 		return err
@@ -160,7 +165,11 @@ func (s *Service) Approve(
 		return errors.New("id not found")
 	}
 
-	r := s.cm.GetRuntime(obj.RunId)
+	server := s.cm.Get(obj.User)
+	if server == nil {
+		return errors.New("runtime not found")
+	}
+	r := server.GetRuntime(obj.RunId)
 	if r == nil {
 		return errors.New("runtime not found")
 	}

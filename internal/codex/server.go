@@ -291,7 +291,7 @@ func NewCodexServer(rootDir, user string, cfg *Config) (*Server, error) {
 	return &Server{
 		user:     user,
 		workdir:  workdir,
-		socket:   filepath.Join("/run/codex", user+".sock"),
+		socket:   filepath.Join(sockDir, user+".sock"),
 		config:   content,
 		runtimes: make(map[string]*Runtime),
 	}, nil
