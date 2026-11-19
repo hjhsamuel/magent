@@ -3,9 +3,10 @@ package config
 import "time"
 
 type Config struct {
-	Server *ServerConfig
-	Log    *LogConfig
-	Store  *StoreConfig
+	Server  *ServerConfig
+	Log     *LogConfig
+	Store   *StoreConfig
+	Runtime *RuntimeConfig
 }
 
 type ServerConfig struct {
@@ -30,4 +31,8 @@ type StoreConfig struct {
 	MinIdleConn     int
 	MaxConnIdleTime time.Duration
 	Debug           bool
+}
+
+type RuntimeConfig struct {
+	Token string
 }

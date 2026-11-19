@@ -47,6 +47,9 @@ func Init() error {
 	if err := setStorage(); err != nil {
 		return err
 	}
+	if err := setRuntime(); err != nil {
+		return err
+	}
 
 	if err := initLog(); err != nil {
 		return err
@@ -151,6 +154,16 @@ func setStorage() error {
 			return err
 		}
 		gConf.Store.Debug = debug
+	}
+
+	return nil
+}
+
+func setRuntime() error {
+	if v := os.Getenv("MAGENT_RUNTIME_TOKEN"); v != "" {
+		gConf.Runtime.Token = v
+	} else {
+		return errors.New("missing env: MAGENT_RUNTIME_TOKEN")
 	}
 
 	return nil

@@ -1,40 +1,37 @@
-package service
+package codex
 
 import (
 	"errors"
-	"os"
-	"strconv"
+	"net/http"
 	"sync"
-
-	"github.com/hjhsamuel/magent/internal/codex"
 )
 
 const runtimeShardCount = 32
 
-type RuntimeManager struct {
+type Manager struct {
 	shards    [runtimeShardCount]*serverShard
 	closeOnce sync.Once
 }
 
-func (m *RuntimeManager) shard(user int) *serverShard {
+func (m *Manager) shard(user int) *serverShard {
 	return m.shards[uint(user)%uint(len(m.shards))]
 }
 
 // Get returns the user's running server, or nil during startup and shutdown.
-func (m *RuntimeManager) Get(user int) *codex.Server {
+func (m *Manager) Get(user int) *UserRuntime {
 	return m.shard(user).Get(user)
 }
 
-func (m *RuntimeManager) CreateOrGet(user int) (*codex.Server, error) {
-	return m.shard(user).CreateOrGet(user)
+func (m *Manager) CreateOrGet(user int, headers http.Header) (*UserRuntime, error) {
+	return m.shard(user).CreateOrGet(user, headers)
 }
 
-func (m *RuntimeManager) Destroy(user int) {
+func (m *Manager) Destroy(user int) {
 	m.shard(user).Destroy(user)
 }
 
 // Close drains in-flight operations and prevents subsequent creation.
-func (m *RuntimeManager) Close() {
+func (m *Manager) Close() {
 	m.closeOnce.Do(func() {
 		for _, shard := range m.shards {
 			shard.Close()
@@ -42,27 +39,30 @@ func (m *RuntimeManager) Close() {
 	})
 }
 
-func NewRuntimeManager(path string) (*RuntimeManager, error) {
-	_ = os.MkdirAll(path, os.ModePerm)
+// NewRuntimeManager resolves each user to their remote Codex app-server URL.
+func NewRuntimeManager(resolveEndpoint func(int) (string, error)) (*Manager, error) {
+	if resolveEndpoint == nil {
+		return nil, errors.New("Codex endpoint resolver is required")
+	}
 
-	m := new(RuntimeManager)
+	m := new(Manager)
 	for i := range m.shards {
-		m.shards[i] = newServerShard(path)
+		m.shards[i] = newServerShard(resolveEndpoint)
 	}
 	return m, nil
 }
 
 type serverShard struct {
-	root    string
-	mu      sync.RWMutex
-	closed  bool
-	servers map[int]*codex.Server
+	resolveEndpoint func(int) (string, error)
+	mu              sync.RWMutex
+	closed          bool
+	servers         map[int]*UserRuntime
 	// A transition lasts until startup or shutdown finishes. During shutdown
 	// the old server stays registered so another destroy waits for that instance.
 	transitions map[int]chan struct{}
 }
 
-func (s *serverShard) Get(user int) *codex.Server {
+func (s *serverShard) Get(user int) *UserRuntime {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.closed || s.transitions[user] != nil {
@@ -71,7 +71,7 @@ func (s *serverShard) Get(user int) *codex.Server {
 	return s.servers[user]
 }
 
-func (s *serverShard) CreateOrGet(user int) (*codex.Server, error) {
+func (s *serverShard) CreateOrGet(user int, headers http.Header) (*UserRuntime, error) {
 	if server := s.Get(user); server != nil {
 		return server, nil
 	}
@@ -93,9 +93,10 @@ func (s *serverShard) CreateOrGet(user int) (*codex.Server, error) {
 		s.transitions[user] = make(chan struct{})
 		s.mu.Unlock()
 
-		server, err := codex.NewCodexServer(s.root, strconv.Itoa(user), nil)
+		endpoint, err := s.resolveEndpoint(user)
+		var server *UserRuntime
 		if err == nil {
-			err = server.Start()
+			server, err = NewUserRuntime(endpoint, headers)
 		}
 		s.mu.Lock()
 		if err == nil {
@@ -116,8 +117,8 @@ func (s *serverShard) finishTransitionLocked(user int) {
 	delete(s.transitions, user)
 }
 
-func (s *serverShard) watch(user int, server *codex.Server) {
-	_ = server.Wait()
+func (s *serverShard) watch(user int, server *UserRuntime) {
+	server.Wait()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.servers[user] == server && s.transitions[user] == nil {
@@ -172,10 +173,10 @@ func (s *serverShard) Close() {
 	}
 }
 
-func newServerShard(root string) *serverShard {
+func newServerShard(resolveEndpoint func(int) (string, error)) *serverShard {
 	return &serverShard{
-		root:        root,
-		servers:     make(map[int]*codex.Server),
-		transitions: make(map[int]chan struct{}),
+		resolveEndpoint: resolveEndpoint,
+		servers:         make(map[int]*UserRuntime),
+		transitions:     make(map[int]chan struct{}),
 	}
 }

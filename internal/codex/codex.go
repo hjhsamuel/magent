@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"sync"
 	"time"
@@ -13,9 +14,12 @@ import (
 	"github.com/google/uuid"
 )
 
-const requestTimeout = 30 * time.Second
+// ErrRuntimeConnect distinguishes connection failures from initialization failures.
+var ErrRuntimeConnect = errors.New("connect codex runtime")
 
-// Runtime owns one initialized app-server connection.
+const requestTimeout = 5 * time.Second
+
+// Runtime owns one WebSocket connection to the remote app-server.
 // Protocol: https://learn.chatgpt.com/docs/app-server
 // Consume Events continuously and use Approve for command/file approval requests.
 // When Events is full, text deltas are dropped and other events apply backpressure.
@@ -283,7 +287,7 @@ func (r *Runtime) call(ctx context.Context, method Method, params, result any) (
 
 	r.mu.Lock()
 	r.nextID++
-	id := fmt.Sprintf("codex_%d", r.nextID)
+	id := fmt.Sprintf(`"codex_%d"`, r.nextID)
 	ch := make(chan Message, 1)
 	r.pending[id] = ch
 	r.mu.Unlock()
@@ -545,7 +549,7 @@ func (r *Runtime) WaitClosed() {
 	}
 }
 
-// ThreadID identifies a Runtime opened and bound by Server.
+// ThreadID identifies a Runtime opened and bound by UserRuntime.
 func (r *Runtime) ThreadID() string {
 	return r.threadID
 }
@@ -586,11 +590,8 @@ func (r *Runtime) ThreadRead(ctx context.Context, params ThreadReadParams) (Thre
 	return response, nil
 }
 
-// ErrRuntimeConnect distinguishes connection failures from initialization failures.
-var ErrRuntimeConnect = errors.New("connect codex runtime")
-
-func NewRuntimeContext(ctx context.Context, sockPath string) (*Runtime, error) {
-	c, err := NewUnixConnContext(ctx, sockPath)
+func NewRuntimeContext(ctx context.Context, endpoint string, headers http.Header) (*Runtime, error) {
+	c, err := NewWebSocketConnContext(ctx, endpoint, headers)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrRuntimeConnect, err)
 	}

@@ -4,14 +4,161 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"path/filepath"
+	"strconv"
 	"time"
 
+	"github.com/gin-contrib/sse"
+	"github.com/gin-gonic/gin"
 	"github.com/hjhsamuel/magent/api/utils"
 	"github.com/hjhsamuel/magent/internal/codex"
 	"github.com/hjhsamuel/magent/internal/ringbuffer"
 	"github.com/hjhsamuel/magent/internal/store/schema"
+	"github.com/hjhsamuel/magent/pkg/cryptox"
+	"github.com/hjhsamuel/magent/pkg/token"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+func (s *Service) Listen(
+	c *gin.Context,
+	auth *utils.Auth,
+	sessionId string,
+	seq uint64,
+) error {
+	ctx := c.Request.Context()
+
+	cs, err := s.initUserWorkspace(auth)
+	if err != nil {
+		return err
+	}
+
+	var (
+		id    string
+		runId string
+	)
+	if sessionId == "" {
+		r, err := cs.OpenRuntime(context.Background(), "")
+		if err != nil {
+			return err
+		}
+		runId = r.ThreadID()
+
+		sid, err := s.store.CreateSession(ctx, &schema.Session{
+			Name:      "New Chat",
+			User:      auth.ID,
+			Status:    schema.SessionStateInit,
+			Node:      s.node,
+			RunId:     runId,
+			CreatedAt: time.Now(),
+		})
+		if err != nil {
+			_ = r.Close()
+			return err
+		}
+		id = sid.Hex()
+	} else {
+		sid, err := bson.ObjectIDFromHex(sessionId)
+		if err != nil {
+			return err
+		}
+		obj, err := s.store.GetSession(ctx, bson.M{"_id": sid, "user": auth.ID})
+		if err != nil {
+			return err
+		}
+		runId, id = obj.RunId, sessionId
+	}
+
+	buffer, err := s.rb.CreateOrGet(runId)
+	if err != nil {
+		return err
+	}
+	consumer, err := buffer.ConnectConsumer(seq)
+	if err != nil {
+		// 仅当为新会话时关闭 ringbuffer
+		if sessionId == "" {
+			buffer.Close()
+		}
+		return err
+	}
+	defer consumer.Close()
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("Transfer-Encoding", "chunked")
+	c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+
+	// 补偿：可能因断连导致的审批请求未送达
+	if r := cs.GetRuntime(runId); r != nil {
+		approveReqs := r.ApprovalRequests()
+		if len(approveReqs) != 0 {
+			for _, req := range approveReqs {
+				event, _, err := parseRuntimeMessage(req)
+				if err != nil {
+					continue
+				}
+				_ = s.pushSSEvent(c, *event)
+			}
+		}
+	}
+
+	if err = s.pushSSEvent(c, ringbuffer.Payload{
+		Type: ringbuffer.SSEventInit,
+		Data: ringbuffer.CommonEvent{Data: id},
+	}); err != nil {
+		return err
+	}
+
+	events, err := consumer.ReadAll()
+	if err != nil {
+		return err
+	}
+	if err = s.pushSSEvent(c, events...); err != nil {
+		return err
+	}
+
+	for {
+		item, err := consumer.Next(ctx)
+		if err != nil {
+			if errors.Is(err, ctx.Err()) || errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
+		if err = s.pushSSEvent(c, item); err != nil {
+			return err
+		}
+	}
+}
+
+func (s *Service) pushSSEvent(ctx *gin.Context, events ...ringbuffer.Payload) error {
+	if len(events) == 0 {
+		return nil
+	}
+
+	for _, event := range events {
+		select {
+		case <-ctx.Request.Context().Done():
+			return ctx.Err()
+		default:
+			ctx.Render(-1, sse.Event{
+				Event: string(event.Type),
+				Id:    strconv.FormatUint(event.ID, 10),
+				Data:  event.Data,
+			})
+		}
+	}
+	ctx.Writer.Flush()
+
+	return nil
+}
 
 func (s *Service) Chat(
 	auth *utils.Auth,
@@ -189,4 +336,109 @@ func (s *Service) Approve(
 	default:
 		return errors.New("unknown method")
 	}
+}
+
+func (s *Service) initUserWorkspace(auth *utils.Auth) (*codex.UserRuntime, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 检测 pod 是否存在
+	podName := fmt.Sprintf("codex-%d", auth.ID)
+	namespace := s.k8s.Namespace()
+	_, err := s.k8s.GetPodStatus(ctx, namespace, podName)
+	missing := apierrors.IsNotFound(err)
+	if err != nil && !missing {
+		return nil, err
+	}
+
+	headers := make(http.Header)
+	headers.Set("Authorization", "Bearer "+s.wsToken)
+	ur, err := s.cm.CreateOrGet(auth.ID, headers)
+	if err != nil {
+		return nil, err
+	}
+
+	if missing {
+		mcps, err := s.store.FindMCPs(ctx, bson.M{"status": schema.ToolStateOnline})
+		if err != nil {
+			return nil, err
+		}
+		codexConfig := codex.Config{
+			McpServers: make(map[string]codex.McpServer),
+		}
+		if len(mcps) > 0 {
+			t, err := token.GenerateJWTWithoutExp(auth.Raw, utils.GetJwtSalt())
+			if err != nil {
+				return nil, err
+			}
+			bearer := fmt.Sprintf("Bearer %s", t)
+			for _, item := range mcps {
+				var bt string
+				if item.Token != "" {
+					bt = fmt.Sprintf("Bearer %s", item.Token)
+				} else {
+					bt = bearer
+				}
+				codexConfig.McpServers[item.Name] = codex.McpServer{
+					Url:         item.Url,
+					HttpHeaders: map[string]string{"Authorization": bt},
+				}
+			}
+		}
+
+		err = ur.CreateWorkspace(filepath.Join("workspaces", podName, ".codex"), codexConfig)
+		if err != nil {
+			return nil, err
+		}
+
+		serviceAccount := false
+		_, err = s.k8s.CreatePod(
+			ctx,
+			&corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      podName,
+					Namespace: namespace,
+					Labels:    map[string]string{"agent": "codex"},
+				},
+				Spec: corev1.PodSpec{
+					AutomountServiceAccountToken: &serviceAccount,
+					Containers: []corev1.Container{{
+						Name:  podName,
+						Image: "codex:latest",
+						Command: []string{
+							"codex",
+							"app-server",
+							"--listen",
+							"ws://0.0.0.0:8000",
+							"--ws-auth",
+							"capability-token",
+							"--ws-token-sha256",
+							"$TOKEN_SHA256",
+						},
+						Env: []corev1.EnvVar{
+							{Name: "CODEX_HOME", Value: "/app/.codex"},
+							{Name: "TOKEN_SHA256", Value: cryptox.TokenSha256(s.wsToken)},
+						},
+						VolumeMounts: []corev1.VolumeMount{
+							{Name: "workspace", MountPath: "/app", SubPath: strconv.Itoa(auth.ID)},
+						},
+					}},
+					Volumes: []corev1.Volume{
+						{
+							Name: "workspace",
+							VolumeSource: corev1.VolumeSource{
+								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+									ClaimName: "agent-workspace",
+								},
+							},
+						},
+					},
+				},
+			},
+		)
+		if err != nil && !apierrors.IsAlreadyExists(err) {
+			return nil, err
+		}
+	}
+	return ur, nil
 }

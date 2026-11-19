@@ -3,7 +3,7 @@ package codex
 import (
 	"context"
 	"fmt"
-	"net"
+	"net/http"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -30,23 +30,10 @@ func (t *websocketTransport) WriteMessage(m *Message) error {
 	return t.WriteJSON(m)
 }
 
-// NewWebSocketConnContext opens a message transport to a ws:// or wss:// endpoint.
-func NewWebSocketConnContext(ctx context.Context, endpoint string) (MessageTransport, error) {
-	return dialWebSocket(ctx, websocket.DefaultDialer, endpoint)
-}
-
-func NewUnixConnContext(ctx context.Context, sockPath string) (MessageTransport, error) {
-	d := websocket.Dialer{
-		HandshakeTimeout: 30 * time.Second,
-		NetDialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return (&net.Dialer{}).DialContext(ctx, "unix", sockPath)
-		},
-	}
-	return dialWebSocket(ctx, &d, "ws://localhost/")
-}
-
-func dialWebSocket(ctx context.Context, d *websocket.Dialer, endpoint string) (MessageTransport, error) {
-	c, resp, err := d.DialContext(ctx, endpoint, nil)
+// NewWebSocketConnContext opens a WebSocket transport with the supplied handshake headers.
+// Pass nil to connect without additional headers.
+func NewWebSocketConnContext(ctx context.Context, endpoint string, headers http.Header) (MessageTransport, error) {
+	c, resp, err := websocket.DefaultDialer.DialContext(ctx, endpoint, headers)
 	if err != nil {
 		if resp != nil && resp.Body != nil {
 			_ = resp.Body.Close()
