@@ -13,6 +13,7 @@ import (
 )
 
 var gConf = &Config{
+	Runtime: &RuntimeConfig{},
 	Server: &ServerConfig{
 		Host: "0.0.0.0",
 		Port: 8080,
@@ -164,6 +165,21 @@ func setRuntime() error {
 		gConf.Runtime.Token = v
 	} else {
 		return errors.New("missing env: MAGENT_RUNTIME_TOKEN")
+	}
+	if v := os.Getenv("MAGENT_RUNTIME_TOPIC_URL"); v != "" {
+		gConf.Runtime.Topic.Url = v
+	} else {
+		return errors.New("missing env: MAGENT_RUNTIME_TOPIC_URL")
+	}
+	if v := os.Getenv("MAGENT_RUNTIME_TOPIC_KEY"); v != "" {
+		gConf.Runtime.Topic.ApiKey = v
+	} else {
+		return errors.New("missing env: MAGENT_RUNTIME_TOPIC_KEY")
+	}
+	if v := os.Getenv("MAGENT_RUNTIME_TOPIC_MODEL"); v != "" {
+		gConf.Runtime.Topic.Model = v
+	} else {
+		return errors.New("missing env: MAGENT_RUNTIME_TOPIC_MODEL")
 	}
 
 	return nil

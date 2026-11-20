@@ -35,4 +35,11 @@ type StoreConfig struct {
 
 type RuntimeConfig struct {
 	Token string
+	Topic TopicConfig
+}
+
+type TopicConfig struct {
+	Url    string
+	ApiKey string
+	Model  string
 }

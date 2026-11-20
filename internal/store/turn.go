@@ -52,14 +52,15 @@ func (d *Store) StartTurn(
 	ctx context.Context,
 	sessionId bson.ObjectID,
 	content string,
-) (bson.ObjectID, error) {
+) (bson.ObjectID, uint64, error) {
 	session, err := d.StartSession()
 	if err != nil {
-		return bson.ObjectID{}, err
+		return bson.ObjectID{}, 0, err
 	}
 	defer session.EndSession(ctx)
 
 	var id bson.ObjectID
+	var index uint64
 	now := time.Now()
 	_, err = session.WithTransaction(ctx, func(sc context.Context) (any, error) {
 		result := d.getCollection(schema.SessionCollection).FindOneAndUpdate(
@@ -78,6 +79,8 @@ func (d *Store) StartTurn(
 		if err = result.Decode(&obj); err != nil {
 			return nil, err
 		}
+
+		index = obj.Seq
 
 		res, err := d.getCollection(schema.TurnCollection).InsertOne(sc, &schema.Turn{
 			Session:   sessionId,
@@ -100,10 +103,10 @@ func (d *Store) StartTurn(
 		return nil, nil
 	})
 	if err != nil {
-		return bson.ObjectID{}, err
+		return bson.ObjectID{}, 0, err
 	}
 
-	return id, nil
+	return id, index, nil
 }
 
 func (d *Store) UpdateTurn(ctx context.Context, filter, update bson.M) error {

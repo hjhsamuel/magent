@@ -15,10 +15,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/hjhsamuel/magent/api/utils"
 	"github.com/hjhsamuel/magent/internal/codex"
+	"github.com/hjhsamuel/magent/internal/prompts"
 	"github.com/hjhsamuel/magent/internal/ringbuffer"
 	"github.com/hjhsamuel/magent/internal/store/schema"
 	"github.com/hjhsamuel/magent/pkg/cryptox"
 	"github.com/hjhsamuel/magent/pkg/token"
+	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -199,13 +201,16 @@ func (s *Service) Chat(
 		return err
 	}
 
-	go s.turnStart(sid, obj.Seq, r, producer)
-
-	turnId, err := s.store.StartTurn(context.Background(), sid, content)
+	turnId, index, err := s.store.StartTurn(context.Background(), sid, content)
 	if err != nil {
 		_ = r.Close()
 		producer.Close()
 		return err
+	}
+
+	go s.turnStart(sid, index, r, producer)
+	if index == 0 {
+		go s.generateSessionTitle(sid, content, producer)
 	}
 
 	response, err := r.TurnStart(context.Background(), codex.TurnStartParams{
@@ -226,13 +231,13 @@ func (s *Service) Chat(
 			},
 		)
 		return err
-	} else {
-		_ = s.store.UpdateTurn(
-			context.Background(),
-			bson.M{"_id": turnId},
-			bson.M{"$set": bson.M{"turn_id": response.Turn.ID}},
-		)
 	}
+
+	_ = s.store.UpdateTurn(
+		context.Background(),
+		bson.M{"_id": turnId},
+		bson.M{"$set": bson.M{"turn_id": response.Turn.ID}},
+	)
 
 	return nil
 }
@@ -281,6 +286,31 @@ func (s *Service) turnStart(
 		case <-r.Done():
 			return
 		}
+	}
+}
+
+func (s *Service) generateSessionTitle(
+	sid bson.ObjectID,
+	content string,
+	producer *ringbuffer.Producer,
+) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	title, err := s.topic.Complete(ctx, "", prompts.TopicPrompt, content)
+	if err == nil {
+		err = s.store.UpdateSession(
+			ctx,
+			bson.M{"_id": sid},
+			bson.M{"$set": bson.M{"name": title}},
+		)
+		_, _ = producer.Write(ringbuffer.Payload{
+			Type: ringbuffer.SSEventTitle,
+			Data: ringbuffer.CommonEvent{Data: title},
+		})
+	}
+	if err != nil {
+		logrus.WithError(err).WithField("session", sid.Hex()).Warn("could not generate session title")
 	}
 }
 

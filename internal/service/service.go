@@ -6,12 +6,14 @@ import (
 	"github.com/hjhsamuel/magent/internal/container"
 	"github.com/hjhsamuel/magent/internal/ringbuffer"
 	"github.com/hjhsamuel/magent/internal/store"
+	"github.com/hjhsamuel/magent/pkg/llm"
 	"github.com/sirupsen/logrus"
 )
 
 type Service struct {
 	wsToken string
 
+	topic *llm.LLM
 	rb    *ringbuffer.Manager
 	cm    *codex.Manager
 	k8s   *container.Manager
@@ -23,6 +25,12 @@ func NewService(cfg *config.Config) (*Service, error) {
 		wsToken: cfg.Runtime.Token,
 		rb:      ringbuffer.NewManager(),
 	}
+
+	client, err := llm.NewLLM(cfg.Runtime.Topic.Url, cfg.Runtime.Topic.ApiKey, cfg.Runtime.Topic.Model)
+	if err != nil {
+		return nil, err
+	}
+	s.topic = client
 
 	k8s, err := container.NewK8sManager()
 	if err != nil {
