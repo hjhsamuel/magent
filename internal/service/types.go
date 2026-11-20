@@ -9,6 +9,11 @@ import (
 	"github.com/hjhsamuel/magent/internal/ringbuffer"
 )
 
+const (
+	UserWorkDirName = "user"
+	SkillDirName    = "skills"
+)
+
 type completedTurn struct {
 	TurnID  string
 	Summary string

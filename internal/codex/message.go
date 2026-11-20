@@ -35,6 +35,8 @@ const (
 	MethodServerRequestResolved    Method = "serverRequest/resolved"
 
 	MethodError Method = "error"
+
+	MethodListSkills Method = "skills/list"
 )
 
 type Message struct {
@@ -77,7 +79,8 @@ type InitializedParams struct{}
 type ThreadStartParams struct{}
 
 type ThreadResumeParams struct {
-	ThreadID string `json:"threadId"`
+	ThreadID     string `json:"threadId"`
+	ExcludeTurns bool   `json:"excludeTurns"`
 }
 
 type ThreadResponse struct {

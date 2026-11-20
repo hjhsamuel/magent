@@ -415,7 +415,10 @@ func (s *Service) initUserWorkspace(auth *utils.Auth) (*codex.UserRuntime, error
 				}
 			}
 		}
-		err = ur.CreateWorkspace(filepath.Join("/app/workspace", strconv.Itoa(auth.ID), ".codex"), codexConfig)
+		err = ur.CreateWorkspace(
+			filepath.Join("/app/workspace", UserWorkDirName, strconv.Itoa(auth.ID)),
+			codexConfig,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -450,7 +453,16 @@ func (s *Service) initUserWorkspace(auth *utils.Auth) (*codex.UserRuntime, error
 							{Name: "TOKEN_SHA256", Value: cryptox.TokenSha256(s.wsToken)},
 						},
 						VolumeMounts: []corev1.VolumeMount{
-							{Name: "workspace", MountPath: "/app", SubPath: strconv.Itoa(auth.ID)},
+							{
+								Name:      "workspace",
+								MountPath: "/app/.codex",
+								SubPath:   fmt.Sprintf("%s/%d", UserWorkDirName, auth.ID),
+							},
+							{
+								Name:      "workspace",
+								MountPath: "/root/.agents/skills",
+								SubPath:   SkillDirName,
+							},
 						},
 					}},
 					Volumes: []corev1.Volume{
@@ -471,6 +483,11 @@ func (s *Service) initUserWorkspace(auth *utils.Auth) (*codex.UserRuntime, error
 		}
 	}
 	return ur, nil
+}
+
+func (s *Service) getWorkspaceConfig(auth *utils.Auth) (*codex.Config, error) {
+	// TODO
+	panic("implement me")
 }
 
 func (s *Service) getEndpoint(id int) (string, error) {

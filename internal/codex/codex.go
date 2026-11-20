@@ -568,7 +568,10 @@ func (r *Runtime) OpenThread(ctx context.Context, threadID string) (string, erro
 	if threadID == "" {
 		response, err = r.ThreadStart(ctx, ThreadStartParams{})
 	} else {
-		response, err = r.ThreadResume(ctx, ThreadResumeParams{ThreadID: threadID})
+		response, err = r.ThreadResume(ctx, ThreadResumeParams{
+			ThreadID:     threadID,
+			ExcludeTurns: true,
+		})
 	}
 	if err != nil {
 		return "", err
