@@ -53,7 +53,6 @@ func (s *Service) Listen(
 			Name:      "New Chat",
 			User:      auth.ID,
 			Status:    schema.SessionStateInit,
-			Node:      s.node,
 			RunId:     runId,
 			CreatedAt: time.Now(),
 		})
@@ -359,6 +358,7 @@ func (s *Service) initUserWorkspace(auth *utils.Auth) (*codex.UserRuntime, error
 	}
 
 	if missing {
+		// 创建工作目录
 		mcps, err := s.store.FindMCPs(ctx, bson.M{"status": schema.ToolStateOnline})
 		if err != nil {
 			return nil, err
@@ -385,12 +385,12 @@ func (s *Service) initUserWorkspace(auth *utils.Auth) (*codex.UserRuntime, error
 				}
 			}
 		}
-
-		err = ur.CreateWorkspace(filepath.Join("workspaces", podName, ".codex"), codexConfig)
+		err = ur.CreateWorkspace(filepath.Join("/app/workspace", strconv.Itoa(auth.ID), ".codex"), codexConfig)
 		if err != nil {
 			return nil, err
 		}
 
+		// 创建pod
 		serviceAccount := false
 		_, err = s.k8s.CreatePod(
 			ctx,
@@ -441,4 +441,10 @@ func (s *Service) initUserWorkspace(auth *utils.Auth) (*codex.UserRuntime, error
 		}
 	}
 	return ur, nil
+}
+
+func (s *Service) getEndpoint(id int) (string, error) {
+	podName := fmt.Sprintf("codex-%d", id)
+	endpoint := fmt.Sprintf("ws://%s:8000", podName)
+	return endpoint, nil
 }
