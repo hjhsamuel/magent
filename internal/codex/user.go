@@ -6,11 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"sync"
-
-	"github.com/pelletier/go-toml/v2"
 )
 
 // UserRuntime owns one user's active runtimes, keyed by thread ID.
@@ -21,25 +17,6 @@ type UserRuntime struct {
 	closed   bool
 	done     chan struct{}
 	runtimes map[string]*Runtime
-}
-
-// CreateWorkspace creates dir if needed and writes cfg to config.toml in place.
-func (s *UserRuntime) CreateWorkspace(dir string, cfg Config) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.closed {
-		return errors.New("codex server closed")
-	}
-
-	data, err := toml.Marshal(cfg)
-	if err != nil {
-		return fmt.Errorf("encode workspace config: %w", err)
-	}
-
-	_ = os.MkdirAll(dir, os.ModePerm)
-
-	return os.WriteFile(filepath.Join(dir, "config.toml"), data, 0644)
 }
 
 func (s *UserRuntime) Wait() {

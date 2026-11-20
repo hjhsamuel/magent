@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -19,7 +20,9 @@ import (
 	"github.com/hjhsamuel/magent/internal/ringbuffer"
 	"github.com/hjhsamuel/magent/internal/store/schema"
 	"github.com/hjhsamuel/magent/pkg/cryptox"
+	"github.com/hjhsamuel/magent/pkg/fx"
 	"github.com/hjhsamuel/magent/pkg/token"
+	"github.com/pelletier/go-toml/v2"
 	"github.com/sirupsen/logrus"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	corev1 "k8s.io/api/core/v1"
@@ -388,38 +391,8 @@ func (s *Service) initUserWorkspace(auth *utils.Auth) (*codex.UserRuntime, error
 	}
 
 	if missing {
-		// 创建工作目录
-		mcps, err := s.store.FindMCPs(ctx, bson.M{"status": schema.ToolStateOnline})
-		if err != nil {
-			return nil, err
-		}
-		codexConfig := codex.Config{
-			McpServers: make(map[string]codex.McpServer),
-		}
-		if len(mcps) > 0 {
-			t, err := token.GenerateJWTWithoutExp(auth.Raw, utils.GetJwtSalt())
-			if err != nil {
-				return nil, err
-			}
-			bearer := fmt.Sprintf("Bearer %s", t)
-			for _, item := range mcps {
-				var bt string
-				if item.Token != "" {
-					bt = fmt.Sprintf("Bearer %s", item.Token)
-				} else {
-					bt = bearer
-				}
-				codexConfig.McpServers[item.Name] = codex.McpServer{
-					Url:         item.Url,
-					HttpHeaders: map[string]string{"Authorization": bt},
-				}
-			}
-		}
-		err = ur.CreateWorkspace(
-			filepath.Join("/app/workspace", UserWorkDirName, strconv.Itoa(auth.ID)),
-			codexConfig,
-		)
-		if err != nil {
+		// 创建用户工作目录
+		if err = s.createUserWorkspace(auth); err != nil {
 			return nil, err
 		}
 
@@ -485,9 +458,93 @@ func (s *Service) initUserWorkspace(auth *utils.Auth) (*codex.UserRuntime, error
 	return ur, nil
 }
 
-func (s *Service) getWorkspaceConfig(auth *utils.Auth) (*codex.Config, error) {
-	// TODO
-	panic("implement me")
+func (s *Service) createUserWorkspace(auth *utils.Auth) error {
+	path, exists := s.isUserWorkspaceExists(auth)
+	if exists {
+		return nil
+	}
+
+	_ = os.MkdirAll(path, os.ModePerm)
+
+	err := fx.CopyFile(
+		filepath.Join("workspace", "models.json"),
+		filepath.Join(path, "models.json"),
+	)
+	if err != nil {
+		return err
+	}
+
+	return s.updateUserWorkspaceConfig(filepath.Join(path, "config.toml"), auth)
+}
+
+func (s *Service) updateUserWorkspaceConfig(path string, auth *utils.Auth) error {
+	mcps, err := s.store.FindMCPs(context.Background(), bson.M{"status": schema.ToolStateOnline})
+	if err != nil {
+		return err
+	}
+	cfg, err := s.getWorkspaceConfig(auth, mcps...)
+	if err != nil {
+		return err
+	}
+	content, err := toml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, content, 0644)
+}
+
+func (s *Service) isUserWorkspaceExists(auth *utils.Auth) (string, bool) {
+	path := filepath.Join("workspace", UserWorkDirName, strconv.Itoa(auth.ID))
+	if _, err := os.Stat(path); err != nil {
+		return path, false
+	}
+	if _, err := os.Stat(filepath.Join(path, "config.toml")); err != nil {
+		return path, false
+	}
+	return path, true
+}
+
+func (s *Service) getWorkspaceConfig(
+	auth *utils.Auth,
+	mcps ...*schema.Mcp,
+) (*codex.Config, error) {
+	path := filepath.Join("workspace", "config.toml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var cfg *codex.Config
+	if err = toml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("decode %s: %w", path, err)
+	}
+
+	if len(mcps) == 0 {
+		return cfg, nil
+	}
+
+	userToken, err := token.GenerateJWTWithoutExp(auth.Raw, utils.GetJwtSalt())
+	if err != nil {
+		return nil, err
+	}
+	bearer := "Bearer " + userToken
+
+	mcpServers := make(map[string]codex.McpServer)
+	for _, item := range mcps {
+		var bt string
+		if item.Token != "" {
+			bt = "Bearer " + item.Token
+		} else {
+			bt = bearer
+		}
+		mcpServers[item.Name] = codex.McpServer{
+			Url:         item.Url,
+			HttpHeaders: map[string]string{"Authorization": bt},
+		}
+	}
+	cfg.McpServers = mcpServers
+
+	return cfg, nil
 }
 
 func (s *Service) getEndpoint(id int) (string, error) {

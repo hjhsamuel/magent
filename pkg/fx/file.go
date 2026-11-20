@@ -78,3 +78,23 @@ func validDownloadFilename(name string) bool {
 	return name != "" && name != "." && name != ".." &&
 		!strings.ContainsAny(name, "/\\:\x00") && filepath.IsLocal(name)
 }
+
+func CopyFile(src, dest string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("open source file: %w", err)
+	}
+	defer srcFile.Close()
+
+	destFile, err := os.Create(dest)
+	if err != nil {
+		return fmt.Errorf("create destination file: %w", err)
+	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, srcFile)
+	if err != nil {
+		return fmt.Errorf("copy file: %w", err)
+	}
+	return nil
+}
