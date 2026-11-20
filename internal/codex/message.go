@@ -36,7 +36,8 @@ const (
 
 	MethodError Method = "error"
 
-	MethodListSkills Method = "skills/list"
+	MethodListSkills       Method = "skills/list"
+	MethodReloadMCPServers Method = "config/mcpServer/reload"
 )
 
 type Message struct {
@@ -75,6 +76,10 @@ type InitializeResponse struct {
 }
 
 type InitializedParams struct{}
+
+type ListSkillsParams struct {
+	ForceReload bool `json:"forceReload"`
+}
 
 type ThreadStartParams struct{}
 

@@ -364,6 +364,17 @@ func (r *Runtime) reply(id json.RawMessage, result any, rpcErr *RPCError) error 
 	return r.write(m)
 }
 
+// ReloadSkills bypasses the skills cache and reports errors found during discovery.
+// With no directories it scans the app-server's current working directory.
+func (r *Runtime) ReloadSkills(ctx context.Context) error {
+	return r.call(ctx, MethodListSkills, ListSkillsParams{ForceReload: true}, nil)
+}
+
+// ReloadMCPServers requests a reload of the app-server's MCP configuration.
+func (r *Runtime) ReloadMCPServers(ctx context.Context) error {
+	return r.call(ctx, MethodReloadMCPServers, nil, nil)
+}
+
 // ThreadStart creates a thread and binds the Runtime after validating the response.
 func (r *Runtime) ThreadStart(ctx context.Context, params ThreadStartParams) (ThreadResponse, error) {
 	if r.threadID != "" {

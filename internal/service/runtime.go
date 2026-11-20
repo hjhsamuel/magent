@@ -478,7 +478,10 @@ func (s *Service) createUserWorkspace(auth *utils.Auth) error {
 }
 
 func (s *Service) updateUserWorkspaceConfig(path string, auth *utils.Auth) error {
-	mcps, err := s.store.FindMCPs(context.Background(), bson.M{"status": schema.ToolStateOnline})
+	mcps, err := s.store.FindTools(
+		context.Background(),
+		bson.M{"kind": schema.ToolMcp, "status": schema.ToolStateOnline},
+	)
 	if err != nil {
 		return err
 	}
@@ -506,7 +509,7 @@ func (s *Service) isUserWorkspaceExists(auth *utils.Auth) (string, bool) {
 
 func (s *Service) getWorkspaceConfig(
 	auth *utils.Auth,
-	mcps ...*schema.Mcp,
+	mcps ...*schema.Tool,
 ) (*codex.Config, error) {
 	path := filepath.Join("workspace", "config.toml")
 	data, err := os.ReadFile(path)
