@@ -10,6 +10,7 @@ import (
 )
 
 func Install(url string, tempDir string, skillDir string) (*Frontmatter, error) {
+	_ = os.MkdirAll(tempDir, os.ModePerm)
 	// 创建临时目录
 	tempRoot, err := os.MkdirTemp(tempDir, "skill-*")
 	if err != nil {
@@ -24,7 +25,7 @@ func Install(url string, tempDir string, skillDir string) (*Frontmatter, error) 
 	}
 
 	// 解压
-	tempSkillDir := filepath.Join(tempDir, "skill")
+	tempSkillDir := filepath.Join(tempRoot, "skill")
 	_ = os.MkdirAll(tempSkillDir, os.ModePerm)
 	err = fx.ExtractDownloadedArchive(archiveFile, tempSkillDir)
 	if err != nil {
@@ -57,8 +58,13 @@ func Install(url string, tempDir string, skillDir string) (*Frontmatter, error) 
 	if err != nil {
 		return nil, err
 	}
+	// 校验名称
+	if err = ValidateName(fm.Name); err != nil {
+		return nil, err
+	}
 
 	// 将 skill 移动至指定目录
+	_ = os.MkdirAll(skillDir, os.ModePerm)
 	err = os.Rename(filepath.Dir(skillFile), filepath.Join(skillDir, fm.Name))
 	if err != nil {
 		return nil, err

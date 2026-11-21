@@ -81,7 +81,11 @@ func (s *Service) downloadAndInstallSkill(id bson.ObjectID, url string) {
 		filter = bson.M{"_id": id}
 		update bson.M
 	)
-	fm, err := skill.Install(url, os.TempDir(), filepath.Join(WorkspaceDir, SkillDirName))
+	fm, err := skill.Install(
+		url,
+		filepath.Join(WorkspaceDir, TempDirName),
+		filepath.Join(WorkspaceDir, SkillDirName),
+	)
 	if err != nil {
 		update = bson.M{"$set": bson.M{
 			"status":     schema.ToolStateOffline,
@@ -113,6 +117,9 @@ func (s *Service) RemoveSkill(id string) error {
 		return err
 	}
 
-	_ = os.RemoveAll(filepath.Join(WorkspaceDir, SkillDirName, obj.Name))
+	if obj.Name != "" && obj.Status == schema.ToolStateOnline {
+		_ = os.RemoveAll(filepath.Join(WorkspaceDir, SkillDirName, obj.Name))
+	}
+
 	return nil
 }

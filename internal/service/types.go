@@ -13,6 +13,7 @@ const (
 	WorkspaceDir    = "workspace"
 	UserWorkDirName = "user"
 	SkillDirName    = "skills"
+	TempDirName     = "temp"
 )
 
 type completedTurn struct {
