@@ -6,18 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 
 	"gopkg.in/yaml.v3"
 )
 
-func ReadSkill(name string, withContent bool) (*Frontmatter, string, error) {
-	root, err := openSkillRoot(name)
-	if err != nil {
-		return nil, "", err
-	}
-	defer root.Close()
-
-	f, err := root.Open("SKILL.md")
+func ReadSkill(path string, withContent bool) (*Frontmatter, string, error) {
+	f, err := os.Open(path)
 	if err != nil {
 		return nil, "", err
 	}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/hjhsamuel/magent/api/utils"
+	"github.com/hjhsamuel/magent/internal/skill"
 	"github.com/hjhsamuel/magent/internal/store/schema"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
@@ -76,7 +77,26 @@ func (s *Service) AddSkill(auth *utils.Auth, obj *schema.Tool) (string, error) {
 }
 
 func (s *Service) downloadAndInstallSkill(id bson.ObjectID, url string) {
-	// TODO
+	var (
+		filter = bson.M{"_id": id}
+		update bson.M
+	)
+	fm, err := skill.Install(url, os.TempDir(), filepath.Join(WorkspaceDir, SkillDirName))
+	if err != nil {
+		update = bson.M{"$set": bson.M{
+			"status":     schema.ToolStateOffline,
+			"error":      err.Error(),
+			"updated_at": time.Now(),
+		}}
+	} else {
+		update = bson.M{"$set": bson.M{
+			"status":      schema.ToolStatusReady,
+			"name":        fm.Name,
+			"description": fm.Description,
+			"updated_at":  time.Now(),
+		}}
+	}
+	_ = s.store.UpdateTool(context.Background(), filter, update)
 }
 
 func (s *Service) RemoveSkill(id string) error {
@@ -93,6 +113,6 @@ func (s *Service) RemoveSkill(id string) error {
 		return err
 	}
 
-	_ = os.RemoveAll(filepath.Join("workspace", SkillDirName, obj.Name))
+	_ = os.RemoveAll(filepath.Join(WorkspaceDir, SkillDirName, obj.Name))
 	return nil
 }

@@ -10,6 +10,7 @@ import (
 )
 
 const (
+	WorkspaceDir    = "workspace"
 	UserWorkDirName = "user"
 	SkillDirName    = "skills"
 )

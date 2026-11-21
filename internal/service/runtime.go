@@ -468,7 +468,7 @@ func (s *Service) createUserWorkspace(auth *utils.Auth) error {
 	_ = os.MkdirAll(path, os.ModePerm)
 
 	err := fx.CopyFile(
-		filepath.Join("workspace", "models.json"),
+		filepath.Join(WorkspaceDir, "models.json"),
 		filepath.Join(path, "models.json"),
 	)
 	if err != nil {
@@ -498,7 +498,7 @@ func (s *Service) updateUserWorkspaceConfig(path string, auth *utils.Auth) error
 }
 
 func (s *Service) isUserWorkspaceExists(auth *utils.Auth) (string, bool) {
-	path := filepath.Join("workspace", UserWorkDirName, strconv.Itoa(auth.ID))
+	path := filepath.Join(WorkspaceDir, UserWorkDirName, strconv.Itoa(auth.ID))
 	if _, err := os.Stat(path); err != nil {
 		return path, false
 	}
@@ -512,7 +512,7 @@ func (s *Service) getWorkspaceConfig(
 	auth *utils.Auth,
 	mcps ...*schema.Tool,
 ) (*codex.Config, error) {
-	path := filepath.Join("workspace", "config.toml")
+	path := filepath.Join(WorkspaceDir, "config.toml")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
