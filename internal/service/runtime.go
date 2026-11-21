@@ -435,6 +435,7 @@ func (s *Service) initUserWorkspace(auth *utils.Auth) (*codex.UserRuntime, error
 								Name:      "workspace",
 								MountPath: "/root/.agents/skills",
 								SubPath:   SkillDirName,
+								ReadOnly:  true,
 							},
 						},
 					}},

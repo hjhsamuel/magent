@@ -12,19 +12,21 @@ import (
 	"time"
 )
 
-func DownloadFileByUrl(remoteUrl string, tempPath, path string) error {
+func DownloadFileByUrl(remoteUrl string, tempPath, path string) (string, error) {
+	_ = os.MkdirAll(path, os.ModePerm)
+
 	client := &http.Client{
 		Timeout: 5 * time.Minute,
 	}
 
 	resp, err := client.Get(remoteUrl)
 	if err != nil {
-		return fmt.Errorf("download file: %w", err)
+		return "", fmt.Errorf("download file: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download file: unexpected HTTP status %s", resp.Status)
+		return "", fmt.Errorf("download file: unexpected HTTP status %s", resp.Status)
 	}
 
 	// ParseMediaType also decodes RFC 2231 filename* parameters.
@@ -36,19 +38,13 @@ func DownloadFileByUrl(remoteUrl string, tempPath, path string) error {
 		escapedPath := resp.Request.URL.EscapedPath()
 		filename, err = url.PathUnescape(escapedPath[strings.LastIndex(escapedPath, "/")+1:])
 		if err != nil || !validDownloadFilename(filename) {
-			return fmt.Errorf("download response and URL have no valid filename")
-		}
-	}
-
-	for _, name := range []string{tempPath, path} {
-		if err := os.MkdirAll(name, 0755); err != nil {
-			return fmt.Errorf("create download directory: %w", err)
+			return "", fmt.Errorf("download response and URL have no valid filename")
 		}
 	}
 
 	f, err := os.CreateTemp(tempPath, "download-*")
 	if err != nil {
-		return fmt.Errorf("create temporary download: %w", err)
+		return "", fmt.Errorf("create temporary download: %w", err)
 	}
 	moved := false
 	defer func() {
@@ -60,18 +56,19 @@ func DownloadFileByUrl(remoteUrl string, tempPath, path string) error {
 	_, copyErr := io.Copy(f, resp.Body)
 	closeErr := f.Close()
 	if copyErr != nil {
-		return fmt.Errorf("write download: %w", copyErr)
+		return "", fmt.Errorf("write download: %w", copyErr)
 	}
 	if closeErr != nil {
-		return fmt.Errorf("close download: %w", closeErr)
+		return "", fmt.Errorf("close download: %w", closeErr)
 	}
 
-	if err := os.Rename(f.Name(), filepath.Join(path, filename)); err != nil {
-		return fmt.Errorf("move download to destination: %w", err)
+	dst := filepath.Join(path, filename)
+	if err := os.Rename(f.Name(), dst); err != nil {
+		return "", fmt.Errorf("move download to destination: %w", err)
 	}
 	moved = true
 
-	return extractDownloadedArchive(filepath.Join(path, filename), path)
+	return dst, nil
 }
 
 func validDownloadFilename(name string) bool {

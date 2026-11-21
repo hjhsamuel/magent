@@ -11,9 +11,9 @@ import (
 	"strings"
 )
 
-// extractDownloadedArchive selects a decoder and owns the destination root.
+// ExtractDownloadedArchive selects a decoder and owns the destination root.
 // Unrecognized extensions are left intact as ordinary downloaded files.
-func extractDownloadedArchive(archivePath, destination string) error {
+func ExtractDownloadedArchive(archivePath, destination string) error {
 	var extract func(string, *archiveEntryWriter) error
 	switch name := strings.ToLower(archivePath); {
 	case strings.HasSuffix(name, ".zip"):

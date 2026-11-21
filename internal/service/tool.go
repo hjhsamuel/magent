@@ -70,9 +70,13 @@ func (s *Service) AddSkill(auth *utils.Auth, obj *schema.Tool) (string, error) {
 		return "", err
 	}
 
-	// TODO
+	go s.downloadAndInstallSkill(id, obj.Url)
 
 	return id.Hex(), nil
+}
+
+func (s *Service) downloadAndInstallSkill(id bson.ObjectID, url string) {
+	// TODO
 }
 
 func (s *Service) RemoveSkill(id string) error {
@@ -89,6 +93,6 @@ func (s *Service) RemoveSkill(id string) error {
 		return err
 	}
 
-	_ = os.RemoveAll(filepath.Join("workspace", "skills", obj.Name))
+	_ = os.RemoveAll(filepath.Join("workspace", SkillDirName, obj.Name))
 	return nil
 }
