@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -23,7 +24,7 @@ func ExtractDownloadedArchive(archivePath, destination string) error {
 	case strings.HasSuffix(name, ".tar"):
 		extract = extractTAR
 	default:
-		return nil
+		return errors.New("unsupported archive")
 	}
 
 	root, err := os.OpenRoot(destination)
