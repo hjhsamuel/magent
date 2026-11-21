@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/hjhsamuel/magent/api/utils"
+	"github.com/hjhsamuel/magent/internal/mcpx"
 	"github.com/hjhsamuel/magent/internal/skill"
 	"github.com/hjhsamuel/magent/internal/store/schema"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -14,14 +15,23 @@ import (
 
 func (s *Service) AddMcp(auth *utils.Auth, obj *schema.Tool) (string, error) {
 	obj.Kind = schema.ToolMcp
-	obj.Status = schema.ToolStateOffline
 	obj.Creator = auth.ID
 	obj.CreatedAt = time.Now()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	id, err := s.store.AddTool(ctx, obj)
+	mcpSrv, err := mcpx.NewMCP(obj.Url, nil)
+	if err != nil {
+		return "", err
+	}
+	if err = mcpSrv.Ping(ctx); err != nil {
+		return "", err
+	}
+
+	obj.Status = schema.ToolStatusReady
+
+	id, err := s.store.AddTool(context.Background(), obj)
 	if err != nil {
 		return "", err
 	}
@@ -29,6 +39,7 @@ func (s *Service) AddMcp(auth *utils.Auth, obj *schema.Tool) (string, error) {
 }
 
 func (s *Service) SetMcpStatus(id string, status schema.ToolState) error {
+	// TODO
 	tid, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return err
@@ -45,6 +56,7 @@ func (s *Service) SetMcpStatus(id string, status schema.ToolState) error {
 }
 
 func (s *Service) RemoveMcp(id string) error {
+	// TODO
 	tid, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return err
@@ -104,6 +116,7 @@ func (s *Service) downloadAndInstallSkill(id bson.ObjectID, url string) {
 }
 
 func (s *Service) RemoveSkill(id string) error {
+	// TODO
 	tid, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return err
