@@ -13,4 +13,5 @@ func Route(srv *service.Service, g *gin.RouterGroup) {
 	group.Use(middleware.AuthMiddleware)
 
 	sessionRoute(api, group)
+	toolRoute(api, group)
 }

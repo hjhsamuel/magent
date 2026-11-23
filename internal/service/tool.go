@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/hjhsamuel/magent/internal/skill"
 	"github.com/hjhsamuel/magent/internal/store/schema"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 func (s *Service) AddMcp(auth *utils.Auth, obj *schema.Tool) (string, error) {
@@ -135,4 +137,27 @@ func (s *Service) RemoveSkill(id string) error {
 	}
 
 	return nil
+}
+
+func (s *Service) GetToolList(kind int, offset string, limit int64) ([]*schema.Tool, error) {
+	id, err := bson.ObjectIDFromHex(offset)
+	if err != nil {
+		return nil, err
+	}
+	filter := bson.M{"_id": bson.M{"$lt": id}}
+
+	switch schema.ToolKind(kind) {
+	case schema.ToolMcp:
+		filter["kind"] = schema.ToolMcp
+	case schema.ToolSkill:
+		filter["kind"] = schema.ToolSkill
+	default:
+		return nil, fmt.Errorf("invalid tool kind: %d", kind)
+	}
+
+	return s.store.FindTools(
+		context.Background(),
+		filter,
+		options.Find().SetSort(bson.M{"_id": -1}).SetLimit(limit),
+	)
 }
