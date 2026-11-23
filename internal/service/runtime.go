@@ -391,6 +391,11 @@ func (s *Service) initUserWorkspace(auth *utils.Auth) (*codex.UserRuntime, error
 	}
 
 	if missing {
+		userToken, err := token.GenerateJWTWithoutExp(auth.Raw, utils.GetJwtSalt())
+		if err != nil {
+			return nil, err
+		}
+
 		// 创建用户工作目录
 		if err = s.createUserWorkspace(auth); err != nil {
 			return nil, err
@@ -424,6 +429,7 @@ func (s *Service) initUserWorkspace(auth *utils.Auth) (*codex.UserRuntime, error
 						Env: []corev1.EnvVar{
 							{Name: "CODEX_HOME", Value: "/app/.codex"},
 							{Name: "TOKEN_SHA256", Value: cryptox.TokenSha256(s.wsToken)},
+							{Name: "MAGENT_USER_TOKEN", Value: userToken},
 						},
 						VolumeMounts: []corev1.VolumeMount{
 							{
@@ -467,34 +473,91 @@ func (s *Service) createUserWorkspace(auth *utils.Auth) error {
 
 	_ = os.MkdirAll(path, os.ModePerm)
 
-	err := fx.CopyFile(
+	if err := fx.CopyFile(
 		filepath.Join(WorkspaceDir, "models.json"),
 		filepath.Join(path, "models.json"),
-	)
-	if err != nil {
+	); err != nil {
 		return err
 	}
 
-	return s.updateUserWorkspaceConfig(filepath.Join(path, "config.toml"), auth)
+	if err := fx.CopyFile(
+		filepath.Join(WorkspaceDir, "config.toml"),
+		filepath.Join(path, "config.toml"),
+	); err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func (s *Service) updateUserWorkspaceConfig(path string, auth *utils.Auth) error {
+func (s *Service) updateUserWorkspaceConfig(path string) error {
+	if err := fx.CopyFile(
+		filepath.Join(WorkspaceDir, "config.toml"),
+		filepath.Join(path, "config.toml"),
+	); err != nil {
+		return err
+	}
+
+	userId, err := strconv.Atoi(filepath.Base(path))
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	podName := fmt.Sprintf("codex-%d", userId)
+	_, err = s.k8s.GetPodStatus(ctx, s.k8s.Namespace(), podName)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	//headers := make(http.Header)
+	//headers.Set("Authorization", "Bearer "+s.wsToken)
+	//ur, err := s.cm.CreateOrGet(userId, headers)
+	//if err != nil {
+	//	return err
+	//}
+	// TODO
+	panic("implement me")
+}
+
+func (s *Service) updateWorkspaceConfig() ([]bson.ObjectID, error) {
 	mcps, err := s.store.FindTools(
 		context.Background(),
-		bson.M{"kind": schema.ToolMcp, "status": schema.ToolStateOnline},
+		bson.M{
+			"kind":   schema.ToolMcp,
+			"status": bson.M{"$in": []schema.ToolState{schema.ToolStateOnline, schema.ToolStatusReady}},
+		},
 	)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	cfg, err := s.getWorkspaceConfig(auth, mcps...)
+
+	cfg, err := s.getWorkspaceConfig(mcps...)
 	if err != nil {
-		return err
+		return nil, err
 	}
+
 	content, err := toml.Marshal(cfg)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return os.WriteFile(path, content, 0644)
+	err = os.WriteFile(filepath.Join(WorkspaceDir, "config.toml"), content, 0644)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]bson.ObjectID, 0)
+	for _, item := range mcps {
+		if item.Status == schema.ToolStatusReady {
+			ids = append(ids, item.ID)
+		}
+	}
+	return ids, nil
 }
 
 func (s *Service) isUserWorkspaceExists(auth *utils.Auth) (string, bool) {
@@ -508,10 +571,7 @@ func (s *Service) isUserWorkspaceExists(auth *utils.Auth) (string, bool) {
 	return path, true
 }
 
-func (s *Service) getWorkspaceConfig(
-	auth *utils.Auth,
-	mcps ...*schema.Tool,
-) (*codex.Config, error) {
+func (s *Service) getWorkspaceConfig(mcps ...*schema.Tool) (*codex.Config, error) {
 	path := filepath.Join(WorkspaceDir, "config.toml")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -527,24 +587,18 @@ func (s *Service) getWorkspaceConfig(
 		return cfg, nil
 	}
 
-	userToken, err := token.GenerateJWTWithoutExp(auth.Raw, utils.GetJwtSalt())
-	if err != nil {
-		return nil, err
-	}
-	bearer := "Bearer " + userToken
-
 	mcpServers := make(map[string]codex.McpServer)
 	for _, item := range mcps {
-		var bt string
-		if item.Token != "" {
-			bt = "Bearer " + item.Token
-		} else {
-			bt = bearer
-		}
-		mcpServers[item.Name] = codex.McpServer{
+		info := codex.McpServer{
 			Url:         item.Url,
-			HttpHeaders: map[string]string{"Authorization": bt},
+			HttpHeaders: make(map[string]string),
 		}
+		if item.Token != "" {
+			info.HttpHeaders["Authorization"] = "Bearer " + item.Token
+		} else {
+			info.BearerTokenEnvVar = "MAGENT_USER_TOKEN"
+		}
+		mcpServers[item.Name] = info
 	}
 	cfg.McpServers = mcpServers
 

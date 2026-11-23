@@ -1,6 +1,8 @@
 package service
 
 import (
+	"sync"
+
 	"github.com/hjhsamuel/magent/config"
 	"github.com/hjhsamuel/magent/internal/codex"
 	"github.com/hjhsamuel/magent/internal/container"
@@ -18,12 +20,24 @@ type Service struct {
 	cm    *codex.Manager
 	k8s   *container.Manager
 	store *store.Store
+
+	exit chan struct{}
+	wg   sync.WaitGroup
+}
+
+func (s *Service) init() error {
+	if err := s.initCron(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func NewService(cfg *config.Config) (*Service, error) {
 	s := &Service{
 		wsToken: cfg.Runtime.Token,
 		rb:      ringbuffer.NewManager(),
+		exit:    make(chan struct{}),
 	}
 
 	client, err := llm.NewLLM(cfg.Runtime.Topic.Url, cfg.Runtime.Topic.ApiKey, cfg.Runtime.Topic.Model)
@@ -49,6 +63,10 @@ func NewService(cfg *config.Config) (*Service, error) {
 		return nil, err
 	}
 	s.cm = cm
+
+	if err = s.init(); err != nil {
+		return nil, err
+	}
 
 	return s, nil
 }
