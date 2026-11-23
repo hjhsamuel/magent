@@ -46,17 +46,20 @@ type CommonEvent struct {
 
 type ApproveReq struct {
 	ID      json.RawMessage `json:"id"`
+	Method  string          `json:"method"`
 	Content string          `json:"content"`
 }
 
 type PermissionReq struct {
 	ID         json.RawMessage `json:"id"`
+	Method     string          `json:"method"`
 	Content    string          `json:"content"`
 	Permission any             `json:"permission"`
 }
 
 type ElicitationReq struct {
 	ID     json.RawMessage `json:"id"`
+	Method string          `json:"method"`
 	Schema json.RawMessage `json:"schema"`
 }
 

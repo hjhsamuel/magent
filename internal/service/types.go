@@ -95,6 +95,7 @@ func parseRuntimeMessage(e codex.Message) (*ringbuffer.Payload, *completedTurn, 
 			Type: ringbuffer.SSEventApprove,
 			Data: ringbuffer.ApproveReq{
 				ID:      e.ID,
+				Method:  string(codex.MethodCommandExecutionApproval),
 				Content: strings.Join(parts, "\n"),
 			},
 		}, nil, nil
@@ -112,6 +113,7 @@ func parseRuntimeMessage(e codex.Message) (*ringbuffer.Payload, *completedTurn, 
 			Type: ringbuffer.SSEventApprove,
 			Data: ringbuffer.ApproveReq{
 				ID:      e.ID,
+				Method:  string(codex.MethodFileChangeApproval),
 				Content: content,
 			},
 		}, nil, nil
@@ -129,6 +131,7 @@ func parseRuntimeMessage(e codex.Message) (*ringbuffer.Payload, *completedTurn, 
 			Type: ringbuffer.SSEventApprove,
 			Data: ringbuffer.PermissionReq{
 				ID:         e.ID,
+				Method:     string(codex.MethodPermissionsApproval),
 				Content:    content,
 				Permission: params.Permissions,
 			},
@@ -142,6 +145,7 @@ func parseRuntimeMessage(e codex.Message) (*ringbuffer.Payload, *completedTurn, 
 			Type: ringbuffer.SSEventApprove,
 			Data: ringbuffer.ElicitationReq{
 				ID:     e.ID,
+				Method: string(codex.MethodMcpServerElicitation),
 				Schema: params.RequestedSchema,
 			},
 		}, nil, nil
