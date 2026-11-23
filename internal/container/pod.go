@@ -33,6 +33,14 @@ func (m *Manager) GetPodStatus(ctx context.Context, namespace, name string) (*co
 	return &pod.Status, nil
 }
 
+func (m *Manager) GetPodList(ctx context.Context, namespace, label string) ([]corev1.Pod, error) {
+	info, err := m.client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: label})
+	if err != nil {
+		return nil, err
+	}
+	return info.Items, nil
+}
+
 // DeletePod requests graceful deletion. An absent pod is already deleted.
 func (m *Manager) DeletePod(ctx context.Context, namespace, name string) error {
 	if namespace == "" {

@@ -5,7 +5,6 @@ import (
 
 	"github.com/hjhsamuel/magent/internal/store/schema"
 	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
@@ -37,15 +36,22 @@ func (d *Store) AddTool(ctx context.Context, obj *schema.Tool) (bson.ObjectID, e
 	return id, nil
 }
 
-func (d *Store) UpdateTool(ctx context.Context, filter, update bson.M) error {
-	result, err := d.getCollection(schema.ToolCollection).UpdateOne(ctx, filter, update)
-	if err != nil {
-		return err
+func (d *Store) UpdateTool(
+	ctx context.Context,
+	filter bson.M,
+	update bson.M,
+	opts ...options.Lister[options.FindOneAndUpdateOptions],
+) (*schema.Tool, error) {
+	result := d.getCollection(schema.ToolCollection).FindOneAndUpdate(ctx, filter, update, opts...)
+	if err := result.Err(); err != nil {
+		return nil, err
 	}
-	if result.ModifiedCount == 0 {
-		return mongo.ErrNoDocuments
+
+	var obj schema.Tool
+	if err := result.Decode(&obj); err != nil {
+		return nil, err
 	}
-	return nil
+	return &obj, nil
 }
 
 func (d *Store) RemoveTool(

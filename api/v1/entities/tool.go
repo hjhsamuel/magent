@@ -15,8 +15,7 @@ type ToolBase struct {
 	ID          string `json:"id"`          // 工具 id
 	Name        string `json:"name"`        // 名称
 	Description string `json:"description"` // 描述
-	Status      int    `json:"status"`      // 状态。0：已上线；1：上线中；2：安装中；3：离线
-	Error       string `json:"error"`       // 上线失败原因
+	Status      int    `json:"status"`      // 状态。0：已上线；1：上线中；2：安装中；3：卸载中
 	Creator     int    `json:"creator"`     // 创建者
 	CreatedAt   int64  `json:"created_at"`  // 创建时间
 	UpdatedAt   int64  `json:"updated_at"`  // 更新时间

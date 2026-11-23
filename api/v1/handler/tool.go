@@ -49,7 +49,6 @@ func (a *Api) GetToolList(ctx *gin.Context) {
 			Name:        item.Name,
 			Description: item.Description,
 			Status:      int(item.Status),
-			Error:       item.Error,
 			Creator:     item.Creator,
 			CreatedAt:   item.CreatedAt.Unix(),
 			UpdatedAt:   item.UpdatedAt.Unix(),

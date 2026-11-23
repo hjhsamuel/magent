@@ -124,6 +124,35 @@ func (s *UserRuntime) RemoveRuntime(threadID string) error {
 	return nil
 }
 
+// ReloadSkillsAndMCPServers requests both reloads over one temporary connection.
+func (s *UserRuntime) ReloadSkillsAndMCPServers(ctx context.Context, mcp, skill bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	r, err := s.connect(ctx)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	go func() {
+		for range r.Events() {
+		}
+	}()
+
+	if skill {
+		if err = r.ReloadSkills(ctx); err != nil {
+			return err
+		}
+	}
+	if mcp {
+		if err = r.ReloadMCPServers(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ThreadStatuses uses one temporary connection and never resumes the threads.
 // On failure the returned map contains only successfully queried statuses.
 func (s *UserRuntime) ThreadStatuses(ctx context.Context, threadIDs []string) (map[string]ThreadStatus, error) {

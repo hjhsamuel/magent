@@ -32,8 +32,8 @@ const (
 type ToolState int
 
 const (
-	ToolStateOnline   ToolState = iota // 已上线
-	ToolStatusReady                    // 准备完毕，等待自动上线
-	ToolStatusLoading                  // 安装中
-	ToolStateOffline                   // 离线
+	ToolStateOnline    ToolState = iota // 已上线
+	ToolStatusReady                     // 准备完毕，等待自动上线
+	ToolStatusLoading                   // 安装中
+	ToolStateUninstall                  // 准备卸载
 )

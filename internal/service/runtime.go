@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/sse"
@@ -490,74 +491,95 @@ func (s *Service) createUserWorkspace(auth *utils.Auth) error {
 	return nil
 }
 
-func (s *Service) updateUserWorkspaceConfig(path string) error {
-	if err := fx.CopyFile(
-		filepath.Join(WorkspaceDir, "config.toml"),
-		filepath.Join(path, "config.toml"),
-	); err != nil {
-		return err
-	}
-
-	userId, err := strconv.Atoi(filepath.Base(path))
+func (s *Service) updateAllUserWorkspace(hasMcp, hasSkill bool) error {
+	// 更新文件
+	var (
+		rootPath = filepath.Join(WorkspaceDir, UserWorkDirName)
+		cfgPath  = filepath.Join(WorkspaceDir, "config.toml")
+	)
+	entries, err := os.ReadDir(rootPath)
 	if err != nil {
 		return err
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	for _, item := range entries {
+		_ = fx.CopyFile(
+			cfgPath,
+			filepath.Join(rootPath, item.Name()),
+		)
+	}
+	// 获取 pod
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	podName := fmt.Sprintf("codex-%d", userId)
-	_, err = s.k8s.GetPodStatus(ctx, s.k8s.Namespace(), podName)
+	pods, err := s.k8s.GetPodList(ctx, s.k8s.Namespace(), "agent:codex")
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
 		return err
 	}
+	// 发送信号
+	headers := make(http.Header)
+	headers.Set("Authorization", "Bearer "+s.wsToken)
+	for _, item := range pods {
+		strId := strings.TrimPrefix(item.Name, "codex-")
+		userId, err := strconv.Atoi(strId)
+		if err != nil {
+			continue
+		}
+		ur, err := s.cm.CreateOrGet(userId, headers)
+		if err != nil {
+			continue
+		}
+		_ = ur.ReloadSkillsAndMCPServers(context.Background(), hasMcp, hasSkill)
+	}
 
-	//headers := make(http.Header)
-	//headers.Set("Authorization", "Bearer "+s.wsToken)
-	//ur, err := s.cm.CreateOrGet(userId, headers)
-	//if err != nil {
-	//	return err
-	//}
-	// TODO
-	panic("implement me")
+	return nil
 }
 
-func (s *Service) updateWorkspaceConfig() ([]bson.ObjectID, error) {
-	mcps, err := s.store.FindTools(
-		context.Background(),
-		bson.M{
-			"kind":   schema.ToolMcp,
-			"status": bson.M{"$in": []schema.ToolState{schema.ToolStateOnline, schema.ToolStatusReady}},
-		},
+func (s *Service) updateWorkspaceConfig(tools ...*schema.Tool) (bool, bool, error) {
+	if len(tools) == 0 {
+		return false, false, nil
+	}
+
+	var (
+		addMcps, delMcps       = make([]*schema.Tool, 0), make([]*schema.Tool, 0)
+		updateMcp, updateSkill = false, false
 	)
-	if err != nil {
-		return nil, err
-	}
+	for _, item := range tools {
+		if item.Status != schema.ToolStatusReady && item.Status != schema.ToolStateUninstall {
+			continue
+		}
 
-	cfg, err := s.getWorkspaceConfig(mcps...)
-	if err != nil {
-		return nil, err
-	}
-
-	content, err := toml.Marshal(cfg)
-	if err != nil {
-		return nil, err
-	}
-	err = os.WriteFile(filepath.Join(WorkspaceDir, "config.toml"), content, 0644)
-	if err != nil {
-		return nil, err
-	}
-
-	ids := make([]bson.ObjectID, 0)
-	for _, item := range mcps {
-		if item.Status == schema.ToolStatusReady {
-			ids = append(ids, item.ID)
+		switch item.Kind {
+		case schema.ToolMcp:
+			updateMcp = true
+			// mcp 需要更新用户配置
+			if item.Status == schema.ToolStatusReady {
+				addMcps = append(addMcps, item)
+			} else if item.Status == schema.ToolStateUninstall {
+				delMcps = append(delMcps, item)
+			}
+		case schema.ToolSkill:
+			// skill 目录已经更新，只需要发送信号即可
+			updateSkill = true
 		}
 	}
-	return ids, nil
+
+	// 更新 config.toml
+	if updateMcp {
+		cfg, err := s.getWorkspaceConfig(addMcps, delMcps)
+		if err != nil {
+			return false, false, err
+		}
+		content, err := toml.Marshal(cfg)
+		if err != nil {
+			return false, false, err
+		}
+		err = os.WriteFile(filepath.Join(WorkspaceDir, "config.toml"), content, 0644)
+		if err != nil {
+			return false, false, err
+		}
+	}
+
+	return updateMcp, updateSkill, nil
 }
 
 func (s *Service) isUserWorkspaceExists(auth *utils.Auth) (string, bool) {
@@ -571,7 +593,7 @@ func (s *Service) isUserWorkspaceExists(auth *utils.Auth) (string, bool) {
 	return path, true
 }
 
-func (s *Service) getWorkspaceConfig(mcps ...*schema.Tool) (*codex.Config, error) {
+func (s *Service) getWorkspaceConfig(addMcps, delMcps []*schema.Tool) (*codex.Config, error) {
 	path := filepath.Join(WorkspaceDir, "config.toml")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -583,12 +605,10 @@ func (s *Service) getWorkspaceConfig(mcps ...*schema.Tool) (*codex.Config, error
 		return nil, fmt.Errorf("decode %s: %w", path, err)
 	}
 
-	if len(mcps) == 0 {
-		return cfg, nil
+	for _, item := range delMcps {
+		delete(cfg.McpServers, item.Name)
 	}
-
-	mcpServers := make(map[string]codex.McpServer)
-	for _, item := range mcps {
+	for _, item := range addMcps {
 		info := codex.McpServer{
 			Url:         item.Url,
 			HttpHeaders: make(map[string]string),
@@ -598,10 +618,8 @@ func (s *Service) getWorkspaceConfig(mcps ...*schema.Tool) (*codex.Config, error
 		} else {
 			info.BearerTokenEnvVar = "MAGENT_USER_TOKEN"
 		}
-		mcpServers[item.Name] = info
+		cfg.McpServers[item.Name] = info
 	}
-	cfg.McpServers = mcpServers
-
 	return cfg, nil
 }
 

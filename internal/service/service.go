@@ -33,6 +33,16 @@ func (s *Service) init() error {
 	return nil
 }
 
+func (s *Service) Close() error {
+	close(s.exit)
+
+	s.cm.Close()
+	s.rb.Close()
+
+	s.wg.Wait()
+	return nil
+}
+
 func NewService(cfg *config.Config) (*Service, error) {
 	s := &Service{
 		wsToken: cfg.Runtime.Token,
