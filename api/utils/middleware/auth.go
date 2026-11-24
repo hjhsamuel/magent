@@ -31,8 +31,8 @@ func AuthMiddleware(ctx *gin.Context) {
 		Raw:   claim,
 		Token: t.Raw,
 	}
-	if v, ok := claim["id"].(int); ok {
-		auth.ID = v
+	if v, ok := claim["id"].(float64); ok {
+		auth.ID = int(v)
 	}
 	if v, ok := claim["name"].(string); ok {
 		auth.Name = v
