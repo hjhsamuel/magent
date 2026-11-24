@@ -78,8 +78,6 @@ metadata:
   namespace: agent
 spec:
   replicas: 1
-  strategy:
-    type: Recreate
   selector:
     matchLabels:
       app: magent
@@ -88,6 +86,8 @@ spec:
       labels:
         app: magent
     spec:
+      nodeSelector:
+        agent: "true"
       serviceAccountName: magent
       containers:
         - name: magent
