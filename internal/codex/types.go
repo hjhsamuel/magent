@@ -80,3 +80,46 @@ type ModelApiKind string
 const (
 	ModelApiResponses ModelApiKind = "responses"
 )
+
+type TurnType string
+
+const (
+	UserMessage         TurnType = "userMessage"
+	HookPrompt          TurnType = "hookPrompt"
+	AgentMessage        TurnType = "agentMessage"
+	FunctionCallOutput  TurnType = "functionCallOutput"
+	Plan                TurnType = "plan"
+	Reasoning           TurnType = "reasoning"
+	CommandExecution    TurnType = "commandExecution"
+	FileChange          TurnType = "fileChange"
+	McpToolCall         TurnType = "mcpToolCall"
+	DynamicToolCall     TurnType = "dynamicToolCall"
+	CollabAgentToolCall TurnType = "collabAgentToolCall"
+	SubAgentActivity    TurnType = "subAgentActivity"
+	WebSearch           TurnType = "webSearch"
+	ImageView           TurnType = "imageView"
+	Sleep               TurnType = "sleep"
+	ImageGeneration     TurnType = "imageGeneration"
+	EnteredReviewMode   TurnType = "enteredReviewMode"
+	ExitedReviewMode    TurnType = "exitedReviewMode"
+	ContextCompaction   TurnType = "contextCompaction"
+)
+
+type SummaryItem struct {
+	ID   string   `json:"id"`
+	Type TurnType `json:"type"`
+
+	// userMessage
+	Content []*TextUserInput `json:"content"`
+
+	// agentMessage
+	Text string `json:"text"`
+
+	// optional
+	CompletedAtMs int64 `json:"completedAtMs"`
+}
+
+type TextUserInput struct {
+	Text string `json:"text"`
+	Type string `json:"type"`
+}

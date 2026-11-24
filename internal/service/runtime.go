@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-contrib/sse"
@@ -212,10 +213,7 @@ func (s *Service) Chat(
 		return err
 	}
 
-	go s.turnStart(sid, index, r, producer)
-	if index == 0 {
-		go s.generateSessionTitle(sid, content, producer)
-	}
+	go s.turnStart(sid, index, r, producer, content)
 
 	response, err := r.TurnStart(context.Background(), codex.TurnStartParams{
 		ThreadID: r.ThreadID(),
@@ -251,9 +249,31 @@ func (s *Service) turnStart(
 	turnIndex uint64,
 	r *codex.Runtime,
 	producer *ringbuffer.Producer,
+	content string,
 ) {
 	defer producer.Close()
 	defer r.Close()
+
+	wg := &sync.WaitGroup{}
+
+	wg.Add(1)
+	go s.solveRuntimeEvents(wg, sessionId, turnIndex, r, producer)
+	if turnIndex == 0 && content != "" {
+		wg.Add(1)
+		go s.generateSessionTitle(wg, sessionId, content, producer)
+	}
+
+	wg.Wait()
+}
+
+func (s *Service) solveRuntimeEvents(
+	wg *sync.WaitGroup,
+	sessionId bson.ObjectID,
+	turnIndex uint64,
+	r *codex.Runtime,
+	producer *ringbuffer.Producer,
+) {
+	defer wg.Done()
 
 	for {
 		select {
@@ -263,7 +283,7 @@ func (s *Service) turnStart(
 				if e.Method != codex.MethodTurnCompleted {
 					continue
 				}
-				completed = &completedTurn{Summary: err.Error()}
+				completed = &completedTurn{Error: err.Error()}
 			}
 			if payload != nil {
 				_, _ = producer.Write(*payload)
@@ -272,15 +292,25 @@ func (s *Service) turnStart(
 				continue
 			}
 
+			var message *schema.Message
+			if completed.Summary != "" {
+				message = &schema.Message{
+					Role:      schema.MessageRoleModel,
+					Content:   completed.Summary,
+					CreatedAt: time.Now(),
+				}
+			} else {
+				message = &schema.Message{
+					Role:      schema.MessageRoleModelError,
+					Content:   completed.Error,
+					CreatedAt: time.Now(),
+				}
+			}
 			_ = s.store.TurnComplete(
 				context.Background(),
 				r.ThreadID(),
 				bson.M{"session": sessionId, "index": turnIndex},
-				&schema.Message{
-					Role:      schema.MessageRoleModel,
-					Content:   completed.Summary,
-					CreatedAt: time.Now(),
-				},
+				message,
 			)
 			_, _ = producer.Write(ringbuffer.Payload{
 				Type: ringbuffer.SSEventComplete,
@@ -294,17 +324,20 @@ func (s *Service) turnStart(
 }
 
 func (s *Service) generateSessionTitle(
+	wg *sync.WaitGroup,
 	sid bson.ObjectID,
 	content string,
 	producer *ringbuffer.Producer,
 ) {
+	defer wg.Done()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	title, err := s.topic.Complete(ctx, "", prompts.TopicPrompt, content)
 	if err == nil {
 		err = s.store.UpdateSession(
-			ctx,
+			context.Background(),
 			bson.M{"_id": sid},
 			bson.M{"$set": bson.M{"name": title}},
 		)

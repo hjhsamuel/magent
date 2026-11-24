@@ -20,6 +20,7 @@ const (
 type completedTurn struct {
 	TurnID  string
 	Summary string
+	Error   string
 }
 
 func parseRuntimeMessage(e codex.Message) (*ringbuffer.Payload, *completedTurn, error) {
@@ -58,10 +59,24 @@ func parseRuntimeMessage(e codex.Message) (*ringbuffer.Payload, *completedTurn, 
 		if params.Turn.ID == "" {
 			return nil, nil, errors.New("completion missing turn ID")
 		}
-		return nil, &completedTurn{
-			TurnID:  params.Turn.ID,
-			Summary: turnSummary(params.Turn),
-		}, nil
+		if params.Turn.Error != nil {
+			return nil, &completedTurn{
+				TurnID: params.Turn.ID,
+				Error:  params.Turn.Error.Message,
+			}, nil
+		} else {
+			var parts []string
+			for _, raw := range params.Turn.Items {
+				var item codex.SummaryItem
+				if json.Unmarshal(raw, &item) == nil && item.Type == codex.AgentMessage {
+					parts = append(parts, item.Text)
+				}
+			}
+			return nil, &completedTurn{
+				TurnID:  params.Turn.ID,
+				Summary: strings.Join(parts, "\n"),
+			}, nil
+		}
 	case codex.MethodError:
 		var params struct {
 			Error struct {
@@ -153,21 +168,4 @@ func parseRuntimeMessage(e codex.Message) (*ringbuffer.Payload, *completedTurn, 
 	default:
 		return nil, nil, nil
 	}
-}
-
-func turnSummary(turn codex.Turn) string {
-	if turn.Error != nil {
-		return turn.Error.Message
-	}
-	var parts []string
-	for _, raw := range turn.Items {
-		var item struct {
-			Type string
-			Text string
-		}
-		if json.Unmarshal(raw, &item) == nil && item.Type == "agentMessage" {
-			parts = append(parts, item.Text)
-		}
-	}
-	return strings.Join(parts, "\n")
 }

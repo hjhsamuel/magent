@@ -15,6 +15,7 @@ const (
 	MethodThreadStarted       Method = "thread/started"
 	MethodThreadResume        Method = "thread/resume"
 	MethodThreadRead          Method = "thread/read"
+	MethodThreadTurnsList     Method = "thread/turns/list"
 	MethodThreadStatusChanged Method = "thread/status/changed"
 
 	MethodTurnStart     Method = "turn/start"
@@ -275,6 +276,17 @@ func droppableEvent(m Message) bool {
 type ServerRequestResolvedParams struct {
 	ThreadID  string          `json:"threadId"`
 	RequestID json.RawMessage `json:"requestId"`
+}
+
+type ThreadTurnsListParams struct {
+	ThreadID      string `json:"threadId"`
+	SortDirection string `json:"sortDirection"`
+	ItemsView     string `json:"itemsView"`
+	Limit         int    `json:"limit"`
+}
+
+type ThreadTurnsListResponse struct {
+	Data []Turn `json:"data"`
 }
 
 type ThreadReadParams struct {

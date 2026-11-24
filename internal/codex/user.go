@@ -155,7 +155,7 @@ func (s *UserRuntime) ReloadSkillsAndMCPServers(ctx context.Context, mcp, skill 
 
 // ThreadStatuses uses one temporary connection and never resumes the threads.
 // On failure the returned map contains only successfully queried statuses.
-func (s *UserRuntime) ThreadStatuses(ctx context.Context, threadIDs []string) (map[string]ThreadStatus, error) {
+func (s *UserRuntime) ThreadStatuses(ctx context.Context, threadIDs ...string) (map[string]ThreadStatus, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	statuses := make(map[string]ThreadStatus, len(threadIDs))
@@ -183,6 +183,47 @@ func (s *UserRuntime) ThreadStatuses(ctx context.Context, threadIDs []string) (m
 		statuses[id] = response.Thread.Status
 	}
 	return statuses, nil
+}
+
+// ThreadTurns requests the latest limit turns once per distinct thread over one temporary connection.
+// On failure it returns the results for previously completed threads.
+func (s *UserRuntime) ThreadTurns(ctx context.Context, limit int, threadIDs ...string) (map[string][]Turn, error) {
+	results := make(map[string][]Turn, len(threadIDs))
+	if len(threadIDs) == 0 {
+		return results, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r, err := s.connect(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	go func() {
+		for range r.Events() {
+		}
+	}()
+
+	for _, id := range threadIDs {
+		if _, ok := results[id]; ok {
+			continue
+		}
+		params := ThreadTurnsListParams{
+			ThreadID:      id,
+			SortDirection: "desc",
+			ItemsView:     "summary",
+			Limit:         limit,
+		}
+		var response ThreadTurnsListResponse
+		if err := r.call(ctx, MethodThreadTurnsList, params, &response); err != nil {
+			return results, fmt.Errorf("list turns for thread %q: %w", id, err)
+		}
+		if response.Data == nil {
+			return results, fmt.Errorf("list turns for thread %q: missing data", id)
+		}
+		results[id] = response.Data
+	}
+	return results, nil
 }
 
 func NewUserRuntime(endpoint string, headers http.Header) (*UserRuntime, error) {
