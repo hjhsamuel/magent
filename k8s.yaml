@@ -113,6 +113,8 @@ spec:
               value: ""
             - name: MAGENT_RUNTIME_TOPIC_MODEL
               value: ""
+            - name: MAGENT_RUNTIME_IMAGE
+              value: "codex:latest"
           volumeMounts:
             - name: workspace
               mountPath: /app/workspace

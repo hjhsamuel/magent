@@ -25,7 +25,7 @@ func (s *Service) load() error {
 		return nil
 	}
 
-	pods, err := s.k8s.GetPodList(context.Background(), s.k8s.Namespace(), "agent=codex")
+	pods, err := s.k8s.GetPodList(context.Background(), s.k8s.Namespace(), "agent=true")
 	if err != nil {
 		return err
 	}

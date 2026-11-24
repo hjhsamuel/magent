@@ -439,7 +439,7 @@ func (s *Service) initUserWorkspace(parent context.Context, auth *utils.Auth) (*
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      podName,
 					Namespace: namespace,
-					Labels:    map[string]string{"agent": "codex"},
+					Labels:    map[string]string{"agent": "true"},
 				},
 				Spec: corev1.PodSpec{
 					Hostname:                     podName,
@@ -449,7 +449,7 @@ func (s *Service) initUserWorkspace(parent context.Context, auth *utils.Auth) (*
 					HostUsers: &hostUsers,
 					Containers: []corev1.Container{{
 						Name:  podName,
-						Image: "codex:latest",
+						Image: s.runtimeImage,
 						SecurityContext: &corev1.SecurityContext{
 							AppArmorProfile: &corev1.AppArmorProfile{Type: corev1.AppArmorProfileTypeUnconfined},
 							SeccompProfile:  &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeUnconfined},
@@ -572,7 +572,7 @@ func (s *Service) updateAllUserWorkspace(hasMcp, hasSkill bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pods, err := s.k8s.GetPodList(ctx, s.k8s.Namespace(), "agent=codex")
+	pods, err := s.k8s.GetPodList(ctx, s.k8s.Namespace(), "agent=true")
 	if err != nil {
 		return err
 	}

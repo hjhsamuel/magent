@@ -124,11 +124,14 @@ func (s *Service) RemoveSkill(id string) error {
 }
 
 func (s *Service) GetToolList(kind int, offset string, limit int64) ([]*schema.Tool, error) {
-	id, err := bson.ObjectIDFromHex(offset)
-	if err != nil {
-		return nil, err
+	filter := bson.M{}
+	if offset != "" {
+		id, err := bson.ObjectIDFromHex(offset)
+		if err != nil {
+			return nil, err
+		}
+		filter = bson.M{"_id": bson.M{"$lt": id}}
 	}
-	filter := bson.M{"_id": bson.M{"$lt": id}}
 
 	switch schema.ToolKind(kind) {
 	case schema.ToolMcp:

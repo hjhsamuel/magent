@@ -35,6 +35,7 @@ type StoreConfig struct {
 type RuntimeConfig struct {
 	Token string
 	Topic TopicConfig
+	Image string
 }
 
 type TopicConfig struct {

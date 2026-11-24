@@ -13,7 +13,9 @@ import (
 )
 
 var gConf = &Config{
-	Runtime: &RuntimeConfig{},
+	Runtime: &RuntimeConfig{
+		Image: "codex:latest",
+	},
 	Server: &ServerConfig{
 		Host: "0.0.0.0",
 		Port: 8080,
@@ -174,6 +176,9 @@ func setRuntime() error {
 		gConf.Runtime.Topic.Model = v
 	} else {
 		return errors.New("missing env: MAGENT_RUNTIME_TOPIC_MODEL")
+	}
+	if v := os.Getenv("MAGENT_RUNTIME_IMAGE"); v != "" {
+		gConf.Runtime.Image = v
 	}
 
 	return nil
