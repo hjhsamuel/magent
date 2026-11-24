@@ -93,23 +93,26 @@ spec:
         - name: magent
           image: magent:latest
           imagePullPolicy: IfNotPresent
-          workingDir: /app
           ports:
-            - name: http
-              containerPort: 8080
-          # 从部署环境的 .env 创建 Secret：
-          # kubectl -n agent create secret generic magent-config --from-env-file=.env
-          # 必填键：MAGENT_SERVER_ID、MAGENT_SERVER_HEADER、MAGENT_SERVER_SALT、
-          # MAGENT_STORAGE_DB、MAGENT_STORAGE_DSN、MAGENT_RUNTIME_TOKEN、
-          # MAGENT_RUNTIME_TOPIC_URL、MAGENT_RUNTIME_TOPIC_KEY、MAGENT_RUNTIME_TOPIC_MODEL。
-          envFrom:
-            - secretRef:
-                name: magent-config
+            - containerPort: 8080
+          # 部署前填写空值。
           env:
-            - name: MAGENT_SERVER_HOST
-              value: "0.0.0.0"
-            - name: MAGENT_SERVER_PORT
-              value: "8080"
+            - name: MAGENT_SERVER_HEADER
+              value: ""
+            - name: MAGENT_SERVER_SALT
+              value: ""
+            - name: MAGENT_STORAGE_DB
+              value: "magent"
+            - name: MAGENT_STORAGE_DSN
+              value: ""
+            - name: MAGENT_RUNTIME_TOKEN
+              value: ""
+            - name: MAGENT_RUNTIME_TOPIC_URL
+              value: ""
+            - name: MAGENT_RUNTIME_TOPIC_KEY
+              value: ""
+            - name: MAGENT_RUNTIME_TOPIC_MODEL
+              value: ""
           readinessProbe:
             tcpSocket:
               port: http
@@ -133,7 +136,6 @@ spec:
   ports:
     - name: websocket
       port: 8000
-      targetPort: 8000
 ---
 apiVersion: v1
 kind: Service
@@ -141,10 +143,11 @@ metadata:
   name: magent
   namespace: agent
 spec:
-  type: ClusterIP
+  type: NodePort
   selector:
     app: magent
   ports:
     - name: http
       port: 8080
-      targetPort: http
+      targetPort: 8080
+      nodePort: 31000

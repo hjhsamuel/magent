@@ -431,7 +431,8 @@ func (s *Service) initUserWorkspace(parent context.Context, auth *utils.Auth) (*
 		}
 
 		// 创建pod
-		serviceAccount := false
+		automountToken, hostUsers := false, false
+		procMount := corev1.UnmaskedProcMount
 		_, err = s.k8s.CreatePod(
 			ctx,
 			&corev1.Pod{
@@ -443,10 +444,17 @@ func (s *Service) initUserWorkspace(parent context.Context, auth *utils.Auth) (*
 				Spec: corev1.PodSpec{
 					Hostname:                     podName,
 					Subdomain:                    "agent",
-					AutomountServiceAccountToken: &serviceAccount,
+					AutomountServiceAccountToken: &automountToken,
+					// An unmasked proc mount requires a private user namespace.
+					HostUsers: &hostUsers,
 					Containers: []corev1.Container{{
 						Name:  podName,
 						Image: "codex:latest",
+						SecurityContext: &corev1.SecurityContext{
+							AppArmorProfile: &corev1.AppArmorProfile{Type: corev1.AppArmorProfileTypeUnconfined},
+							SeccompProfile:  &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeUnconfined},
+							ProcMount:       &procMount,
+						},
 						Command: []string{
 							"codex",
 							"app-server",

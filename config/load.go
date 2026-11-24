@@ -60,12 +60,6 @@ func Init() error {
 }
 
 func setServer() error {
-	if v := os.Getenv("MAGENT_SERVER_ID"); v != "" {
-		gConf.Server.ID = v
-	} else {
-		return errors.New("missing env: MAGENT_SERVER_ID")
-	}
-
 	if v := os.Getenv("MAGENT_SERVER_HOST"); v != "" {
 		gConf.Server.Host = v
 	}
