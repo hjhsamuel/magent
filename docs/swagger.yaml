@@ -1,0 +1,442 @@
+definitions:
+  entities.AddToolReq:
+    properties:
+      description:
+        description: 描述
+        type: string
+      kind:
+        description: 类型。0：mcp；1：skill
+        type: integer
+      name:
+        description: 名称
+        type: string
+      token:
+        description: Bearer token。未传递将使用服务内部 token
+        type: string
+      url:
+        description: 远程地址。mcp：mcp server 地址；skill：压缩包下载地址
+        type: string
+    type: object
+  entities.ApprovalInfo:
+    properties:
+      id:
+        description: 审批 id
+        type: string
+      method:
+        description: 具体审批类型
+        type: string
+      params:
+        description: 审批响应。权限：回传；mcp：JsonSchema 响应结果
+        type: object
+    type: object
+  entities.ApprovalReq:
+    properties:
+      accept:
+        description: 审批结果
+        type: boolean
+      info:
+        $ref: '#/definitions/entities.ApprovalInfo'
+        description: 审批内容
+    type: object
+  entities.ChatReq:
+    properties:
+      content:
+        description: 消息
+        type: string
+    type: object
+  entities.GetSessionListRsp:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/entities.SessionBase'
+        type: array
+      offset:
+        description: 继续检索游标
+        type: string
+    type: object
+  entities.GetToolListRsp:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/entities.ToolBase'
+        type: array
+      offset:
+        description: 继续检索游标
+        type: string
+    type: object
+  entities.GetTurnsRsp:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/entities.TurnBase'
+        type: array
+      offset:
+        description: 继续检索游标
+        type: string
+    type: object
+  entities.Message:
+    properties:
+      content:
+        description: 消息
+        type: string
+      created_at:
+        description: 创建时间
+        type: integer
+      role:
+        description: 角色
+        type: string
+    type: object
+  entities.SessionBase:
+    properties:
+      created_at:
+        description: 创建时间
+        type: integer
+      id:
+        description: 会话 id
+        type: string
+      name:
+        description: 标题
+        type: string
+      status:
+        description: 状态。0：新建；1：运行中；2：已完成
+        type: integer
+      updated_at:
+        description: 更新时间
+        type: integer
+    type: object
+  entities.ToolBase:
+    properties:
+      created_at:
+        description: 创建时间
+        type: integer
+      creator:
+        description: 创建者
+        type: integer
+      description:
+        description: 描述
+        type: string
+      id:
+        description: 工具 id
+        type: string
+      name:
+        description: 名称
+        type: string
+      status:
+        description: 状态。0：已上线；1：上线中；2：安装中；3：卸载中
+        type: integer
+      updated_at:
+        description: 更新时间
+        type: integer
+    type: object
+  entities.TurnBase:
+    properties:
+      id:
+        description: 轮次 id
+        type: string
+      messages:
+        items:
+          $ref: '#/definitions/entities.Message'
+        type: array
+    type: object
+  utils.Response:
+    properties:
+      code:
+        type: integer
+      data:
+        type: any
+      message:
+        type: string
+    type: object
+info:
+  contact: {}
+paths:
+  /magent/v1/session/{id}/approval:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 会话 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 审批结果及内容
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/entities.ApprovalReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.Response'
+            - properties:
+                data:
+                  type: string
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "401":
+          description: 身份验证失败
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "500":
+          description: 服务内部错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+      summary: 提交审批结果
+      tags:
+      - session
+  /magent/v1/session/{id}/chat:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 会话 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 消息内容
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/entities.ChatReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.Response'
+            - properties:
+                data:
+                  type: string
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "401":
+          description: 身份验证失败
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "500":
+          description: 服务内部错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+      summary: 发送会话消息
+      tags:
+      - session
+  /magent/v1/session/{id}/turns:
+    get:
+      parameters:
+      - description: 会话 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 分页游标
+        in: query
+        name: offset
+        type: string
+      - description: 每页数量
+        in: query
+        maximum: 10
+        minimum: 1
+        name: limit
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entities.GetTurnsRsp'
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "401":
+          description: 身份验证失败
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "500":
+          description: 服务内部错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+      summary: 获取会话轮次
+      tags:
+      - session
+  /magent/v1/session/list:
+    get:
+      parameters:
+      - description: 分页游标
+        in: query
+        name: offset
+        type: string
+      - description: 每页数量
+        in: query
+        maximum: 50
+        minimum: 1
+        name: limit
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entities.GetSessionListRsp'
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "401":
+          description: 身份验证失败
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "500":
+          description: 服务内部错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+      summary: 获取会话列表
+      tags:
+      - session
+  /magent/v1/session/stream:
+    get:
+      parameters:
+      - description: 会话 ID，留空时创建会话
+        in: query
+        name: id
+        type: string
+      - description: SSE 事件序号
+        in: query
+        name: seq
+        type: integer
+      produces:
+      - text/event-stream
+      - application/json
+      responses:
+        "200":
+          description: SSE 事件流
+          schema:
+            type: string
+        "401":
+          description: 身份验证失败
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "500":
+          description: 服务内部错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+      summary: 订阅会话事件流
+      tags:
+      - session
+  /magent/v1/tool:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 工具配置，name 和 url 必填
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/entities.AddToolReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.Response'
+            - properties:
+                data:
+                  type: string
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "401":
+          description: 身份验证失败
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "500":
+          description: 服务内部错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+      summary: 添加工具
+      tags:
+      - tool
+  /magent/v1/tool/list:
+    get:
+      parameters:
+      - description: 工具类型，0 为 MCP，1 为 Skill
+        enum:
+        - 0
+        - 1
+        in: query
+        name: kind
+        type: integer
+      - description: 分页游标
+        in: query
+        name: offset
+        type: string
+      - description: 每页数量
+        in: query
+        maximum: 50
+        minimum: 1
+        name: limit
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entities.GetToolListRsp'
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "401":
+          description: 身份验证失败
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "500":
+          description: 服务内部错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+      summary: 获取工具列表
+      tags:
+      - tool
+swagger: "2.0"

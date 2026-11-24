@@ -8,20 +8,20 @@ type StreamReq struct {
 }
 
 type ChatReq struct {
-	ID      string `uri:"id"`       // 会话 id
-	Content string `json:"content"` // 消息
+	ID      string `uri:"id" swaggerignore:"true"` // 会话 id
+	Content string `json:"content"`                // 消息
 }
 
 type ApprovalReq struct {
-	ID     string       `uri:"id"`      // 会话 id
-	Accept bool         `json:"accept"` // 审批结果
-	Info   ApprovalInfo `json:"info"`   // 审批内容
+	ID     string       `uri:"id" swaggerignore:"true"` // 会话 id
+	Accept bool         `json:"accept"`                 // 审批结果
+	Info   ApprovalInfo `json:"info"`                   // 审批内容
 }
 
 type ApprovalInfo struct {
-	ID     json.RawMessage `json:"id"`     // 审批 id
-	Method string          `json:"method"` // 具体审批类型
-	Params json.RawMessage `json:"params"` // 审批响应。权限：回传；mcp：JsonSchema 响应结果
+	ID     json.RawMessage `json:"id" swaggertype:"string"`     // 审批 id
+	Method string          `json:"method"`                      // 具体审批类型
+	Params json.RawMessage `json:"params" swaggertype:"object"` // 审批响应。权限：回传；mcp：JsonSchema 响应结果
 }
 
 type GetSessionListReq struct {
@@ -43,9 +43,9 @@ type SessionBase struct {
 }
 
 type GetTurnsReq struct {
-	ID     string `uri:"id"`      // 会话 id
-	Offset string `form:"offset"` // 检索游标
-	Limit  int64  `form:"limit"`  // 检索数量
+	ID     string `uri:"id" swaggerignore:"true"` // 会话 id
+	Offset string `form:"offset"`                 // 检索游标
+	Limit  int64  `form:"limit"`                  // 检索数量
 }
 
 type GetTurnsRsp struct {

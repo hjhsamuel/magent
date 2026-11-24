@@ -8,6 +8,16 @@ import (
 	"github.com/hjhsamuel/magent/api/v1/entities"
 )
 
+// Stream 订阅会话事件流。
+// @Summary 订阅会话事件流
+// @Tags session
+// @Produce text/event-stream,json
+// @Param id query string false "会话 ID，留空时创建会话"
+// @Param seq query uint64 false "SSE 事件序号"
+// @Success 200 {string} string "SSE 事件流"
+// @Failure 401 {object} utils.Response "身份验证失败"
+// @Failure 500 {object} utils.Response "服务内部错误"
+// @Router /magent/v1/session/stream [get]
 func (a *Api) Stream(ctx *gin.Context) {
 	var req entities.StreamReq
 	_ = ctx.ShouldBindQuery(&req)
@@ -22,6 +32,18 @@ func (a *Api) Stream(ctx *gin.Context) {
 	}
 }
 
+// Chat 发送会话消息。
+// @Summary 发送会话消息
+// @Tags session
+// @Accept json
+// @Produce json
+// @Param id path string true "会话 ID"
+// @Param body body entities.ChatReq true "消息内容"
+// @Success 200 {object} utils.Response{data=string}
+// @Failure 400 {object} utils.Response "请求参数错误"
+// @Failure 401 {object} utils.Response "身份验证失败"
+// @Failure 500 {object} utils.Response "服务内部错误"
+// @Router /magent/v1/session/{id}/chat [post]
 func (a *Api) Chat(ctx *gin.Context) {
 	var req entities.ChatReq
 	_ = ctx.ShouldBindUri(&req)
@@ -50,6 +72,18 @@ func (a *Api) Chat(ctx *gin.Context) {
 	}
 }
 
+// Approval 提交审批结果。
+// @Summary 提交审批结果
+// @Tags session
+// @Accept json
+// @Produce json
+// @Param id path string true "会话 ID"
+// @Param body body entities.ApprovalReq true "审批结果及内容"
+// @Success 200 {object} utils.Response{data=string}
+// @Failure 400 {object} utils.Response "请求参数错误"
+// @Failure 401 {object} utils.Response "身份验证失败"
+// @Failure 500 {object} utils.Response "服务内部错误"
+// @Router /magent/v1/session/{id}/approval [post]
 func (a *Api) Approval(ctx *gin.Context) {
 	var req entities.ApprovalReq
 	_ = ctx.ShouldBindUri(&req)
@@ -77,6 +111,17 @@ func (a *Api) Approval(ctx *gin.Context) {
 	}
 }
 
+// GetSessionList 获取会话列表。
+// @Summary 获取会话列表
+// @Tags session
+// @Produce json
+// @Param offset query string false "分页游标"
+// @Param limit query int true "每页数量" minimum(1) maximum(50)
+// @Success 200 {object} utils.Response{data=entities.GetSessionListRsp}
+// @Failure 400 {object} utils.Response "请求参数错误"
+// @Failure 401 {object} utils.Response "身份验证失败"
+// @Failure 500 {object} utils.Response "服务内部错误"
+// @Router /magent/v1/session/list [get]
 func (a *Api) GetSessionList(ctx *gin.Context) {
 	var req entities.GetSessionListReq
 	_ = ctx.ShouldBindQuery(&req)
@@ -127,6 +172,18 @@ func (a *Api) GetSessionList(ctx *gin.Context) {
 	})
 }
 
+// GetTurns 获取会话轮次。
+// @Summary 获取会话轮次
+// @Tags session
+// @Produce json
+// @Param id path string true "会话 ID"
+// @Param offset query string false "分页游标"
+// @Param limit query int true "每页数量" minimum(1) maximum(10)
+// @Success 200 {object} utils.Response{data=entities.GetTurnsRsp}
+// @Failure 400 {object} utils.Response "请求参数错误"
+// @Failure 401 {object} utils.Response "身份验证失败"
+// @Failure 500 {object} utils.Response "服务内部错误"
+// @Router /magent/v1/session/{id}/turns [get]
 func (a *Api) GetTurns(ctx *gin.Context) {
 	var req entities.GetTurnsReq
 	_ = ctx.ShouldBindUri(&req)
