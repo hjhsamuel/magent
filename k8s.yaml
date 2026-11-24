@@ -113,9 +113,6 @@ spec:
               value: ""
             - name: MAGENT_RUNTIME_TOPIC_MODEL
               value: ""
-          readinessProbe:
-            tcpSocket:
-              port: http
           volumeMounts:
             - name: workspace
               mountPath: /app/workspace

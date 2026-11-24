@@ -3,6 +3,7 @@ package api
 import (
 	"github.com/gin-gonic/gin"
 	v1 "github.com/hjhsamuel/magent/api/v1"
+	_ "github.com/hjhsamuel/magent/docs"
 	"github.com/hjhsamuel/magent/internal/service"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
