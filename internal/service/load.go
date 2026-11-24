@@ -21,6 +21,9 @@ func (s *Service) load() error {
 	if err != nil {
 		return err
 	}
+	if len(objs) == 0 {
+		return nil
+	}
 
 	pods, err := s.k8s.GetPodList(context.Background(), s.k8s.Namespace(), "agent:codex")
 	if err != nil {

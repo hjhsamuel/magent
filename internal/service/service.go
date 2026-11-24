@@ -26,6 +26,10 @@ type Service struct {
 }
 
 func (s *Service) init() error {
+	if err := s.load(); err != nil {
+		return err
+	}
+
 	if err := s.initCron(); err != nil {
 		return err
 	}

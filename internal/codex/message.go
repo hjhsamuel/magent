@@ -86,7 +86,7 @@ type ThreadStartParams struct{}
 
 type ThreadResumeParams struct {
 	ThreadID     string `json:"threadId"`
-	ExcludeTurns bool   `json:"excludeTurns"`
+	ExcludeTurns bool   `json:"excludeTurns,omitempty"`
 }
 
 type ThreadResponse struct {
