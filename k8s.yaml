@@ -1,0 +1,150 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agent
+---
+# 仅给保存工作区的节点打标签：kubectl label node <node> magent-workspace=true
+# 在该节点创建 /workspace，并放入 models.json、config.toml 和 skills/。
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: agent-workspace
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  claimRef:
+    namespace: agent
+    name: agent-workspace
+  local:
+    path: /workspace
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: magent-workspace
+              operator: In
+              values: ["true"]
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agent-workspace
+  namespace: agent
+spec:
+  storageClassName: ""
+  volumeName: agent-workspace
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: magent
+  namespace: agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: magent
+  namespace: agent
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: magent
+  namespace: agent
+subjects:
+  - kind: ServiceAccount
+    name: magent
+    namespace: agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: magent
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: magent
+  namespace: agent
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: magent
+  template:
+    metadata:
+      labels:
+        app: magent
+    spec:
+      serviceAccountName: magent
+      containers:
+        - name: magent
+          image: magent:latest
+          imagePullPolicy: IfNotPresent
+          workingDir: /app
+          ports:
+            - name: http
+              containerPort: 8080
+          # 从部署环境的 .env 创建 Secret：
+          # kubectl -n agent create secret generic magent-config --from-env-file=.env
+          # 必填键：MAGENT_SERVER_ID、MAGENT_SERVER_HEADER、MAGENT_SERVER_SALT、
+          # MAGENT_STORAGE_DB、MAGENT_STORAGE_DSN、MAGENT_RUNTIME_TOKEN、
+          # MAGENT_RUNTIME_TOPIC_URL、MAGENT_RUNTIME_TOPIC_KEY、MAGENT_RUNTIME_TOPIC_MODEL。
+          envFrom:
+            - secretRef:
+                name: magent-config
+          env:
+            - name: MAGENT_SERVER_HOST
+              value: "0.0.0.0"
+            - name: MAGENT_SERVER_PORT
+              value: "8080"
+          readinessProbe:
+            tcpSocket:
+              port: http
+          volumeMounts:
+            - name: workspace
+              mountPath: /app/workspace
+      volumes:
+        - name: workspace
+          persistentVolumeClaim:
+            claimName: agent-workspace
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent
+  namespace: agent
+spec:
+  clusterIP: None
+  selector:
+    agent: codex
+  ports:
+    - name: websocket
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: magent
+  namespace: agent
+spec:
+  type: ClusterIP
+  selector:
+    app: magent
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

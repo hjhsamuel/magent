@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -30,6 +31,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 )
 
 func (s *Service) Listen(
@@ -40,7 +42,7 @@ func (s *Service) Listen(
 ) error {
 	ctx := c.Request.Context()
 
-	cs, err := s.initUserWorkspace(auth)
+	cs, err := s.initUserWorkspace(ctx, auth)
 	if err != nil {
 		return err
 	}
@@ -404,8 +406,8 @@ func (s *Service) Approve(
 	}
 }
 
-func (s *Service) initUserWorkspace(auth *utils.Auth) (*codex.UserRuntime, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func (s *Service) initUserWorkspace(parent context.Context, auth *utils.Auth) (*codex.UserRuntime, error) {
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
 
 	// 检测 pod 是否存在
@@ -414,13 +416,6 @@ func (s *Service) initUserWorkspace(auth *utils.Auth) (*codex.UserRuntime, error
 	_, err := s.k8s.GetPodStatus(ctx, namespace, podName)
 	missing := apierrors.IsNotFound(err)
 	if err != nil && !missing {
-		return nil, err
-	}
-
-	headers := make(http.Header)
-	headers.Set("Authorization", "Bearer "+s.wsToken)
-	ur, err := s.cm.CreateOrGet(auth.ID, headers)
-	if err != nil {
 		return nil, err
 	}
 
@@ -446,6 +441,8 @@ func (s *Service) initUserWorkspace(auth *utils.Auth) (*codex.UserRuntime, error
 					Labels:    map[string]string{"agent": "codex"},
 				},
 				Spec: corev1.PodSpec{
+					Hostname:                     podName,
+					Subdomain:                    "agent",
 					AutomountServiceAccountToken: &serviceAccount,
 					Containers: []corev1.Container{{
 						Name:  podName,
@@ -458,7 +455,7 @@ func (s *Service) initUserWorkspace(auth *utils.Auth) (*codex.UserRuntime, error
 							"--ws-auth",
 							"capability-token",
 							"--ws-token-sha256",
-							"$TOKEN_SHA256",
+							"$(TOKEN_SHA256)",
 						},
 						Env: []corev1.EnvVar{
 							{Name: "CODEX_HOME", Value: "/app/.codex"},
@@ -496,7 +493,30 @@ func (s *Service) initUserWorkspace(auth *utils.Auth) (*codex.UserRuntime, error
 			return nil, err
 		}
 	}
-	return ur, nil
+	// The Pod may still be pulling its image or waiting for its DNS record.
+	address := codexAddress(auth.ID)
+	dialer := net.Dialer{Timeout: time.Second}
+	err = wait.PollUntilContextTimeout(
+		parent,
+		time.Second,
+		2*time.Minute,
+		true,
+		func(ctx context.Context) (bool, error) {
+			conn, err := dialer.DialContext(ctx, "tcp", address)
+			if err != nil {
+				return false, nil
+			}
+			conn.Close()
+			return true, nil
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("waiting for Codex app-server %s: %w", address, err)
+	}
+
+	headers := make(http.Header)
+	headers.Set("Authorization", "Bearer "+s.wsToken)
+	return s.cm.CreateOrGet(auth.ID, headers)
 }
 
 func (s *Service) createUserWorkspace(auth *utils.Auth) error {
@@ -544,7 +564,7 @@ func (s *Service) updateAllUserWorkspace(hasMcp, hasSkill bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pods, err := s.k8s.GetPodList(ctx, s.k8s.Namespace(), "agent:codex")
+	pods, err := s.k8s.GetPodList(ctx, s.k8s.Namespace(), "agent=codex")
 	if err != nil {
 		return err
 	}
@@ -656,8 +676,10 @@ func (s *Service) getWorkspaceConfig(addMcps, delMcps []*schema.Tool) (*codex.Co
 	return cfg, nil
 }
 
+func codexAddress(id int) string {
+	return fmt.Sprintf("codex-%d.agent:8000", id)
+}
+
 func (s *Service) getEndpoint(id int) (string, error) {
-	podName := fmt.Sprintf("codex-%d", id)
-	endpoint := fmt.Sprintf("ws://%s:8000", podName)
-	return endpoint, nil
+	return "ws://" + codexAddress(id), nil
 }
