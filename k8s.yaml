@@ -87,7 +87,7 @@ spec:
         app: magent
     spec:
       nodeSelector:
-        agent: "true"
+        agent: "codex"
       serviceAccountName: magent
       containers:
         - name: magent
