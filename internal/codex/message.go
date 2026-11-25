@@ -23,8 +23,9 @@ const (
 	MethodTurnInterrupt Method = "turn/interrupt"
 	MethodTurnCompleted Method = "turn/completed"
 
-	MethodAgentMessageDelta Method = "item/agentMessage/delta"
-	MethodReasoningDelta    Method = "item/reasoning/textDelta"
+	MethodAgentMessageDelta     Method = "item/agentMessage/delta"
+	MethodReasoningDelta        Method = "item/reasoning/textDelta"
+	MethodReasoningSummaryDelta Method = "item/reasoning/summaryTextDelta"
 
 	MethodItemStarted   Method = "item/started"
 	MethodItemCompleted Method = "item/completed"

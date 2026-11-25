@@ -29,7 +29,7 @@ func parseRuntimeMessage(e codex.Message) (*ringbuffer.Payload, *completedTurn, 
 		return &ringbuffer.Payload{
 			Type: ringbuffer.SSEventPartEnd,
 		}, nil, nil
-	case codex.MethodReasoningDelta:
+	case codex.MethodReasoningDelta, codex.MethodReasoningSummaryDelta:
 		var params struct {
 			Delta string `json:"delta"`
 		}
