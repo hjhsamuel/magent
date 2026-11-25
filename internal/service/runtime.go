@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
 	"strconv"
 	"sync"
 	"time"
@@ -28,7 +29,9 @@ func (s *Service) Listen(
 ) error {
 	ctx := c.Request.Context()
 
-	cs, err := s.initUserWorkspace(ctx, auth)
+	headers := make(http.Header)
+	headers.Set("Authorization", "Bearer "+s.wsToken)
+	cs, err := s.cm.CreateOrGet(auth.ID, headers)
 	if err != nil {
 		return err
 	}

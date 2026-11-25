@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -23,7 +24,55 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
-func (s *Service) initUserWorkspace(parent context.Context, auth *utils.Auth) (*codex.UserRuntime, error) {
+func (s *Service) CheckWorkspaceStatus(auth *utils.Auth) (corev1.PodPhase, error) {
+	endpoint, err := s.getEndpoint(auth.ID)
+	if err != nil {
+		return corev1.PodUnknown, err
+	}
+
+	headers := make(http.Header)
+	headers.Set("Authorization", "Bearer "+s.wsToken)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+	defer cancel()
+
+	transport, err := codex.NewWebSocketConnContext(ctx, endpoint, headers)
+	if err != nil {
+		//
+		ctx2, cancel2 := context.WithTimeout(context.Background(), time.Second*3)
+		defer cancel2()
+
+		pod, err := s.k8s.GetPod(ctx2, s.k8s.Namespace(), fmt.Sprintf("codex-%d", auth.ID))
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return corev1.PodUnknown, nil
+			}
+			return corev1.PodUnknown, err
+		}
+		return pod.Status.Phase, nil
+	}
+	_ = transport.Close()
+
+	return corev1.PodRunning, nil
+}
+
+func (s *Service) CreateWorkspace(auth *utils.Auth) error {
+	status, err := s.CheckWorkspaceStatus(auth)
+	if err != nil {
+		return err
+	}
+
+	switch status {
+	case corev1.PodRunning, corev1.PodPending:
+		return nil
+	case corev1.PodSucceeded, corev1.PodFailed:
+		return errors.New("init user workspace error")
+	default:
+		return s.initUserWorkspace(context.Background(), auth)
+	}
+}
+
+func (s *Service) initUserWorkspace(parent context.Context, auth *utils.Auth) error {
 	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
 
@@ -33,18 +82,18 @@ func (s *Service) initUserWorkspace(parent context.Context, auth *utils.Auth) (*
 	_, err := s.k8s.GetPod(ctx, namespace, podName)
 	missing := apierrors.IsNotFound(err)
 	if err != nil && !missing {
-		return nil, err
+		return err
 	}
 
 	if missing {
 		userToken, err := token.GenerateJWTWithoutExp(auth.Raw, utils.GetJwtSalt())
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		// 创建用户工作目录
 		if err = s.createUserWorkspace(auth); err != nil {
-			return nil, err
+			return err
 		}
 
 		// 创建pod
@@ -120,7 +169,7 @@ func (s *Service) initUserWorkspace(parent context.Context, auth *utils.Auth) (*
 			},
 		)
 		if err != nil && !apierrors.IsAlreadyExists(err) {
-			return nil, err
+			return err
 		}
 	}
 	err = wait.PollUntilContextTimeout(
@@ -146,12 +195,10 @@ func (s *Service) initUserWorkspace(parent context.Context, auth *utils.Auth) (*
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("starting workspace pod %s/%s: %w", namespace, podName, err)
+		return fmt.Errorf("starting workspace pod %s/%s: %w", namespace, podName, err)
 	}
 
-	headers := make(http.Header)
-	headers.Set("Authorization", "Bearer "+s.wsToken)
-	return s.cm.CreateOrGet(auth.ID, headers)
+	return nil
 }
 
 func (s *Service) createUserWorkspace(auth *utils.Auth) error {

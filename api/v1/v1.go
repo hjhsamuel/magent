@@ -14,4 +14,5 @@ func Route(srv *service.Service, g *gin.RouterGroup) {
 
 	sessionRoute(api, group)
 	toolRoute(api, group)
+	workspaceRoute(api, group)
 }
