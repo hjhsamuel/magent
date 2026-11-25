@@ -21,7 +21,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 )
 
 func (s *Service) CheckWorkspaceStatus(auth *utils.Auth) (corev1.PodPhase, error) {
@@ -171,31 +170,6 @@ func (s *Service) initUserWorkspace(parent context.Context, auth *utils.Auth) er
 		if err != nil && !apierrors.IsAlreadyExists(err) {
 			return err
 		}
-	}
-	err = wait.PollUntilContextTimeout(
-		parent,
-		time.Second*3,
-		time.Minute,
-		true,
-		func(ctx context.Context) (bool, error) {
-			pod, err := s.k8s.GetPod(ctx, namespace, podName)
-			if err != nil {
-				return false, err
-			}
-			switch pod.Status.Phase {
-			case corev1.PodRunning:
-				return true, nil
-			case corev1.PodFailed, corev1.PodSucceeded:
-				_ = s.k8s.DeletePod(ctx, pod)
-				return false, fmt.Errorf("pod %s, reason: %s, message: %s", pod.Status.Phase, pod.Status.Reason,
-					pod.Status.Message)
-			default:
-				return false, nil
-			}
-		},
-	)
-	if err != nil {
-		return fmt.Errorf("starting workspace pod %s/%s: %w", namespace, podName, err)
 	}
 
 	return nil
