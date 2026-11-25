@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -14,7 +15,15 @@ import (
 
 var gConf = &Config{
 	Runtime: &RuntimeConfig{
-		Image: "codex:latest",
+		Pod: RuntimePod{
+			Image: "codex:latest",
+			Label: KeyValue{
+				Key:   "agent",
+				Value: "true",
+			},
+			SubDomain: "agent",
+			Pvc:       "agent-workspace",
+		},
 	},
 	Server: &ServerConfig{
 		Host: "0.0.0.0",
@@ -177,8 +186,25 @@ func setRuntime() error {
 	} else {
 		return errors.New("missing env: MAGENT_RUNTIME_TOPIC_MODEL")
 	}
-	if v := os.Getenv("MAGENT_RUNTIME_IMAGE"); v != "" {
-		gConf.Runtime.Image = v
+
+	if v := os.Getenv("MAGENT_RUNTIME_POD_IMAGE"); v != "" {
+		gConf.Runtime.Pod.Image = v
+	}
+	if v := os.Getenv("MAGENT_RUNTIME_POD_LABEL"); v != "" {
+		parts := strings.Split(v, "=")
+		if len(parts) != 2 {
+			return errors.New("invalid env: MAGENT_RUNTIME_POD_LABEL")
+		}
+		gConf.Runtime.Pod.Label = KeyValue{
+			Key:   parts[0],
+			Value: parts[1],
+		}
+	}
+	if v := os.Getenv("MAGENT_RUNTIME_POD_SUBDOM"); v != "" {
+		gConf.Runtime.Pod.SubDomain = v
+	}
+	if v := os.Getenv("MAGENT_RUNTIME_POD_PVC"); v != "" {
+		gConf.Runtime.Pod.Pvc = v
 	}
 
 	return nil

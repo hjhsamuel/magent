@@ -35,11 +35,23 @@ type StoreConfig struct {
 type RuntimeConfig struct {
 	Token string
 	Topic TopicConfig
-	Image string
+	Pod   RuntimePod
 }
 
 type TopicConfig struct {
 	Url    string
 	ApiKey string
 	Model  string
+}
+
+type RuntimePod struct {
+	Image     string
+	Label     KeyValue // eg. agent=true
+	SubDomain string
+	Pvc       string
+}
+
+type KeyValue struct {
+	Key   string
+	Value string
 }

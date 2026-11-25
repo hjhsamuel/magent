@@ -13,8 +13,8 @@ import (
 )
 
 type Service struct {
-	wsToken      string
-	runtimeImage string
+	wsToken    string
+	runtimePod config.RuntimePod
 
 	topic *llm.LLM
 	rb    *ringbuffer.Manager
@@ -50,10 +50,10 @@ func (s *Service) Close() error {
 
 func NewService(cfg *config.Config) (*Service, error) {
 	s := &Service{
-		wsToken:      cfg.Runtime.Token,
-		runtimeImage: cfg.Runtime.Image,
-		rb:           ringbuffer.NewManager(),
-		exit:         make(chan struct{}),
+		wsToken:    cfg.Runtime.Token,
+		runtimePod: cfg.Runtime.Pod,
+		rb:         ringbuffer.NewManager(),
+		exit:       make(chan struct{}),
 	}
 
 	client, err := llm.NewLLM(cfg.Runtime.Topic.Url, cfg.Runtime.Topic.ApiKey, cfg.Runtime.Topic.Model)

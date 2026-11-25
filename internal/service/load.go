@@ -25,7 +25,11 @@ func (s *Service) load() error {
 		return nil
 	}
 
-	pods, err := s.k8s.GetPodList(context.Background(), s.k8s.Namespace(), "agent=true")
+	pods, err := s.k8s.GetPodList(
+		context.Background(),
+		s.k8s.Namespace(),
+		s.runtimePod.Label.Key+"="+s.runtimePod.Label.Value,
+	)
 	if err != nil {
 		return err
 	}

@@ -439,17 +439,19 @@ func (s *Service) initUserWorkspace(parent context.Context, auth *utils.Auth) (*
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      podName,
 					Namespace: namespace,
-					Labels:    map[string]string{"agent": "true"},
+					Labels: map[string]string{
+						s.runtimePod.Label.Key: s.runtimePod.Label.Value,
+					},
 				},
 				Spec: corev1.PodSpec{
 					Hostname:                     podName,
-					Subdomain:                    "agent",
+					Subdomain:                    s.runtimePod.SubDomain,
 					AutomountServiceAccountToken: &automountToken,
 					// An unmasked proc mount requires a private user namespace.
 					HostUsers: &hostUsers,
 					Containers: []corev1.Container{{
 						Name:  podName,
-						Image: s.runtimeImage,
+						Image: s.runtimePod.Image,
 						SecurityContext: &corev1.SecurityContext{
 							AppArmorProfile: &corev1.AppArmorProfile{Type: corev1.AppArmorProfileTypeUnconfined},
 							SeccompProfile:  &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeUnconfined},
@@ -489,7 +491,7 @@ func (s *Service) initUserWorkspace(parent context.Context, auth *utils.Auth) (*
 							Name: "workspace",
 							VolumeSource: corev1.VolumeSource{
 								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-									ClaimName: "agent-workspace",
+									ClaimName: s.runtimePod.Pvc,
 								},
 							},
 						},
@@ -502,7 +504,7 @@ func (s *Service) initUserWorkspace(parent context.Context, auth *utils.Auth) (*
 		}
 	}
 	// The Pod may still be pulling its image or waiting for its DNS record.
-	address := codexAddress(auth.ID)
+	address := s.codexAddress(auth.ID)
 	dialer := net.Dialer{Timeout: time.Second}
 	err = wait.PollUntilContextTimeout(
 		parent,
@@ -572,7 +574,7 @@ func (s *Service) updateAllUserWorkspace(hasMcp, hasSkill bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	pods, err := s.k8s.GetPodList(ctx, s.k8s.Namespace(), "agent=true")
+	pods, err := s.k8s.GetPodList(ctx, s.k8s.Namespace(), s.runtimePod.Label.Key+"="+s.runtimePod.Label.Value)
 	if err != nil {
 		return err
 	}
@@ -684,10 +686,10 @@ func (s *Service) getWorkspaceConfig(addMcps, delMcps []*schema.Tool) (*codex.Co
 	return cfg, nil
 }
 
-func codexAddress(id int) string {
-	return fmt.Sprintf("codex-%d.agent:8000", id)
+func (s *Service) codexAddress(id int) string {
+	return fmt.Sprintf("codex-%d.%s:8000", id, s.runtimePod.SubDomain)
 }
 
 func (s *Service) getEndpoint(id int) (string, error) {
-	return "ws://" + codexAddress(id), nil
+	return "ws://" + s.codexAddress(id), nil
 }
