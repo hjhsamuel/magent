@@ -107,6 +107,9 @@ func (s *Service) initUserWorkspace(parent context.Context, auth *utils.Auth) er
 					Labels: map[string]string{
 						s.runtimePod.Label.Key: s.runtimePod.Label.Value,
 					},
+					Annotations: map[string]string{
+						fmt.Sprintf("container.apparmor.security.beta.kubernetes.io/%s", podName): "unconfined",
+					},
 				},
 				Spec: corev1.PodSpec{
 					Hostname:                     podName,
@@ -121,9 +124,13 @@ func (s *Service) initUserWorkspace(parent context.Context, auth *utils.Auth) er
 						Name:  podName,
 						Image: s.runtimePod.Image,
 						SecurityContext: &corev1.SecurityContext{
-							AppArmorProfile: &corev1.AppArmorProfile{Type: corev1.AppArmorProfileTypeUnconfined},
-							SeccompProfile:  &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeUnconfined},
-							ProcMount:       &procMount,
+							AppArmorProfile: &corev1.AppArmorProfile{
+								Type: corev1.AppArmorProfileTypeUnconfined,
+							},
+							SeccompProfile: &corev1.SeccompProfile{
+								Type: corev1.SeccompProfileTypeUnconfined,
+							},
+							ProcMount: &procMount,
 						},
 						Command: []string{
 							"codex",
