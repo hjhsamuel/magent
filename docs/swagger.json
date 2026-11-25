@@ -467,6 +467,92 @@
                     }
                 }
             }
+        },
+        "/magent/v1/workspace": {
+            "get": {
+                "description": "data.status 的取值为 running（运行中）、pending（启动中）、error（Pod 已结束或失败）或 none（其他状态或无 Pod）。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workspace"
+                ],
+                "summary": "查询工作区状态",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/utils.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/entities.CheckWorkspaceStatus"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "身份验证失败",
+                        "schema": {
+                            "$ref": "#/definitions/utils.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "服务内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/utils.Response"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "工作区处于 pending 或 running 状态时也返回成功。可通过 GET 接口查询当前状态。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workspace"
+                ],
+                "summary": "创建工作区",
+                "responses": {
+                    "200": {
+                        "description": "data 为 OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/utils.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "string"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "身份验证失败",
+                        "schema": {
+                            "$ref": "#/definitions/utils.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "服务内部错误",
+                        "schema": {
+                            "$ref": "#/definitions/utils.Response"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -530,6 +616,15 @@
             "properties": {
                 "content": {
                     "description": "消息",
+                    "type": "string"
+                }
+            }
+        },
+        "entities.CheckWorkspaceStatus": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "description": "状态",
                     "type": "string"
                 }
             }
