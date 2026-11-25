@@ -114,7 +114,13 @@ spec:
             - name: MAGENT_RUNTIME_TOPIC_MODEL
               value: ""
             - name: MAGENT_RUNTIME_IMAGE
-              value: "codex:latest"
+              value: "codex:0.169.0"
+            - name: MAGENT_RUNTIME_POD_LABEL
+              value: "agent=true"
+            - name: MAGENT_RUNTIME_POD_SUBDOM
+              value: "agent"
+            - name: MAGENT_RUNTIME_POD_PVC
+              value: "agent-workspace"
           volumeMounts:
             - name: workspace
               mountPath: /app/workspace

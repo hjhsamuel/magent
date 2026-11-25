@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hjhsamuel/magent/api/utils"
@@ -11,6 +12,10 @@ import (
 func AuthMiddleware(ctx *gin.Context) {
 	content, err := ctx.Cookie(utils.GetCookieKey())
 	if err != nil || content == "" {
+		bearer := ctx.GetHeader("Authorization")
+		content = strings.TrimPrefix(bearer, "Bearer ")
+	}
+	if content == "" {
 		ctx.AbortWithStatusJSON(http.StatusUnauthorized, &utils.Response{
 			Code:    http.StatusUnauthorized,
 			Message: "unauthorized",
