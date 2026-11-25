@@ -21,16 +21,12 @@ func (m *Manager) CreatePod(ctx context.Context, pod *corev1.Pod) (*corev1.Pod, 
 	return m.client.CoreV1().Pods(namespace).Create(ctx, pod, metav1.CreateOptions{})
 }
 
-// GetPodStatus returns the pod's current status, using the default namespace when omitted.
-func (m *Manager) GetPodStatus(ctx context.Context, namespace, name string) (*corev1.PodStatus, error) {
+// GetPod returns the pod, using the default namespace when omitted.
+func (m *Manager) GetPod(ctx context.Context, namespace, name string) (*corev1.Pod, error) {
 	if namespace == "" {
 		namespace = corev1.NamespaceDefault
 	}
-	pod, err := m.client.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		return nil, err
-	}
-	return &pod.Status, nil
+	return m.client.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
 }
 
 func (m *Manager) GetPodList(ctx context.Context, namespace, label string) ([]corev1.Pod, error) {
@@ -42,11 +38,14 @@ func (m *Manager) GetPodList(ctx context.Context, namespace, label string) ([]co
 }
 
 // DeletePod requests graceful deletion. An absent pod is already deleted.
-func (m *Manager) DeletePod(ctx context.Context, namespace, name string) error {
+func (m *Manager) DeletePod(ctx context.Context, pod *corev1.Pod) error {
+	namespace := pod.Namespace
 	if namespace == "" {
 		namespace = corev1.NamespaceDefault
 	}
-	err := m.client.CoreV1().Pods(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+	err := m.client.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{
+		Preconditions: &metav1.Preconditions{UID: &pod.UID, ResourceVersion: &pod.ResourceVersion},
+	})
 	if apierrors.IsNotFound(err) {
 		return nil
 	}

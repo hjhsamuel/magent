@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -413,7 +412,7 @@ func (s *Service) initUserWorkspace(parent context.Context, auth *utils.Auth) (*
 	// 检测 pod 是否存在
 	podName := fmt.Sprintf("codex-%d", auth.ID)
 	namespace := s.k8s.Namespace()
-	_, err := s.k8s.GetPodStatus(ctx, namespace, podName)
+	_, err := s.k8s.GetPod(ctx, namespace, podName)
 	missing := apierrors.IsNotFound(err)
 	if err != nil && !missing {
 		return nil, err
@@ -506,25 +505,30 @@ func (s *Service) initUserWorkspace(parent context.Context, auth *utils.Auth) (*
 			return nil, err
 		}
 	}
-	// The Pod may still be pulling its image or waiting for its DNS record.
-	address := s.codexAddress(auth.ID)
-	dialer := net.Dialer{Timeout: time.Second}
 	err = wait.PollUntilContextTimeout(
 		parent,
-		time.Second,
-		2*time.Minute,
+		time.Second*3,
+		time.Minute,
 		true,
 		func(ctx context.Context) (bool, error) {
-			conn, err := dialer.DialContext(ctx, "tcp", address)
+			pod, err := s.k8s.GetPod(ctx, namespace, podName)
 			if err != nil {
+				return false, err
+			}
+			switch pod.Status.Phase {
+			case corev1.PodRunning:
+				return true, nil
+			case corev1.PodFailed, corev1.PodSucceeded:
+				_ = s.k8s.DeletePod(ctx, pod)
+				return false, fmt.Errorf("pod %s, reason: %s, message: %s", pod.Status.Phase, pod.Status.Reason,
+					pod.Status.Message)
+			default:
 				return false, nil
 			}
-			conn.Close()
-			return true, nil
 		},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("waiting for Codex app-server %s: %w", address, err)
+		return nil, fmt.Errorf("starting workspace pod %s/%s: %w", namespace, podName, err)
 	}
 
 	headers := make(http.Header)

@@ -151,7 +151,7 @@ func (a *Api) GetSessionList(ctx *gin.Context) {
 	if len(objs) == 0 {
 		ctx.JSON(http.StatusOK, utils.Response{
 			Code: http.StatusOK,
-			Data: &entities.GetSessionListRsp{},
+			Data: rsp,
 		})
 		return
 	}
