@@ -449,6 +449,9 @@ func (s *Service) initUserWorkspace(parent context.Context, auth *utils.Auth) (*
 					AutomountServiceAccountToken: &automountToken,
 					// An unmasked proc mount requires a private user namespace.
 					HostUsers: &hostUsers,
+					NodeSelector: map[string]string{
+						s.runtimePod.Label.Key: s.runtimePod.Label.Value,
+					},
 					Containers: []corev1.Container{{
 						Name:  podName,
 						Image: s.runtimePod.Image,
