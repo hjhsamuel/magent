@@ -15,8 +15,7 @@ type Tool struct {
 	Url         string        `bson:"url"`
 	Kind        ToolKind      `bson:"kind"`
 	Status      ToolState     `bson:"status"`
-	Token       string        `bson:"token"`   // bearer token
-	Error       string        `bson:"message"` // 上线失败原因
+	Token       string        `bson:"token"` // bearer token
 	Creator     int           `bson:"creator"`
 	CreatedAt   time.Time     `bson:"created_at"`
 	UpdatedAt   time.Time     `bson:"updated_at"`

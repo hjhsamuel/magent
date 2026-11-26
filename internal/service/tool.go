@@ -41,23 +41,6 @@ func (s *Service) AddMcp(auth *utils.Auth, obj *schema.Tool) (string, error) {
 	return id.Hex(), nil
 }
 
-func (s *Service) RemoveMcp(id string) error {
-	tid, err := bson.ObjectIDFromHex(id)
-	if err != nil {
-		return err
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	_, err = s.store.UpdateTool(
-		ctx,
-		bson.M{"_id": tid, "kind": schema.ToolMcp, "status": schema.ToolStateOnline},
-		bson.M{"$set": bson.M{"status": schema.ToolStateUninstall}},
-	)
-	return err
-}
-
 func (s *Service) AddSkill(auth *utils.Auth, obj *schema.Tool) (string, error) {
 	obj.Kind = schema.ToolSkill
 	obj.Status = schema.ToolStatusLoading
@@ -101,24 +84,33 @@ func (s *Service) downloadAndInstallSkill(id bson.ObjectID, url string) {
 	}
 }
 
-func (s *Service) RemoveSkill(id string) error {
+func (s *Service) DelTool(id string) error {
 	tid, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
 	obj, err := s.store.UpdateTool(
-		ctx,
-		bson.M{"_id": tid, "kind": schema.ToolSkill, "status": schema.ToolStateOnline},
+		context.Background(),
+		bson.M{"_id": tid, "status": schema.ToolStateOnline},
 		bson.M{"$set": bson.M{"status": schema.ToolStateUninstall}},
 	)
 	if err != nil {
 		return err
 	}
-	_ = os.RemoveAll(filepath.Join(WorkspaceDir, SkillDirName, obj.Name))
+
+	if obj.Kind == schema.ToolSkill {
+		err = os.RemoveAll(filepath.Join(WorkspaceDir, SkillDirName, obj.Name))
+		if err != nil {
+			_, _ = s.store.UpdateTool(
+				context.Background(),
+				bson.M{"_id": tid},
+				bson.M{"$set": bson.M{"status": schema.ToolStateOnline}},
+			)
+		} else {
+			_, _ = s.store.RemoveTool(context.Background(), bson.M{"_id": tid})
+		}
+	}
 
 	return nil
 }

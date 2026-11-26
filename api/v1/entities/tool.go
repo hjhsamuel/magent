@@ -28,3 +28,7 @@ type AddToolReq struct {
 	Kind        int    `json:"kind"`        // 类型。0：mcp；1：skill
 	Token       string `json:"token"`       // Bearer token。未传递将使用服务内部 token
 }
+
+type DelToolReq struct {
+	ID string `uri:"id"` // 工具 id
+}

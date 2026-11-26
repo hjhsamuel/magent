@@ -143,3 +143,29 @@ func (a *Api) AddTool(ctx *gin.Context) {
 		})
 	}
 }
+
+func (a *Api) DelTool(ctx *gin.Context) {
+	var req entities.DelToolReq
+	_ = ctx.ShouldBindUri(&req)
+
+	if req.ID == "" {
+		ctx.JSON(http.StatusBadRequest, utils.Response{
+			Code:    http.StatusBadRequest,
+			Message: "invalid params: id is required",
+		})
+		return
+	}
+
+	err := a.srv.DelTool(req.ID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, utils.Response{
+			Code:    http.StatusInternalServerError,
+			Message: err.Error(),
+		})
+	} else {
+		ctx.JSON(http.StatusOK, utils.Response{
+			Code: http.StatusOK,
+			Data: "OK",
+		})
+	}
+}
