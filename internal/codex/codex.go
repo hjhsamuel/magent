@@ -15,7 +15,7 @@ import (
 )
 
 // ErrRuntimeConnect distinguishes connection failures from initialization failures.
-var ErrRuntimeConnect = errors.New("connect codex runtime")
+var ErrRuntimeConnect = errors.New("connect runtime")
 
 const requestTimeout = 5 * time.Second
 
@@ -122,7 +122,7 @@ func (r *Runtime) Err() error {
 }
 
 func (r *Runtime) Close() error {
-	r.stop(errors.New("codex runtime closed"))
+	r.stop(errors.New("runtime closed"))
 	r.WaitClosed()
 	return nil
 }
@@ -272,7 +272,7 @@ func (r *Runtime) call(ctx context.Context, method Method, params, result any) (
 
 	defer func() {
 		if callErr != nil {
-			callErr = fmt.Errorf("codex %s: %w", method, callErr)
+			callErr = fmt.Errorf("runtime %s: %w", method, callErr)
 		}
 	}()
 
@@ -383,7 +383,7 @@ func (r *Runtime) ThreadStart(ctx context.Context, params ThreadStartParams) (Th
 	var result ThreadResponse
 	err := r.call(ctx, MethodThreadStart, params, &result)
 	if err == nil && result.Thread.ID == "" {
-		err = errors.New("codex thread/start: response missing thread ID")
+		err = errors.New("thread/start: response missing thread ID")
 	}
 	if err == nil {
 		r.threadID = result.Thread.ID
@@ -398,7 +398,7 @@ func (r *Runtime) ThreadResume(ctx context.Context, params ThreadResumeParams) (
 	var result ThreadResponse
 	err := r.call(ctx, MethodThreadResume, params, &result)
 	if err == nil && (result.Thread.ID == "" || result.Thread.ID != params.ThreadID) {
-		err = errors.New("codex thread/resume: response thread ID mismatch")
+		err = errors.New("thread/resume: response thread ID mismatch")
 	}
 	return result, err
 }
@@ -411,7 +411,7 @@ func (r *Runtime) TurnStart(ctx context.Context, params TurnStartParams) (TurnSt
 	var result TurnStartResponse
 	err := r.call(ctx, MethodTurnStart, params, &result)
 	if err == nil && result.Turn.ID == "" {
-		err = errors.New("codex turn/start: response missing turn ID")
+		err = errors.New("turn/start: response missing turn ID")
 	}
 	return result, err
 }
@@ -613,7 +613,7 @@ func NewRuntimeContext(ctx context.Context, endpoint string, headers http.Header
 	r := newRuntime(c)
 	if err := r.init(ctx); err != nil {
 		r.Close()
-		return nil, fmt.Errorf("initialize codex runtime: %w", err)
+		return nil, fmt.Errorf("initialize runtime: %w", err)
 	}
 	return r, nil
 }

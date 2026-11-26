@@ -38,7 +38,7 @@ func NewWebSocketConnContext(ctx context.Context, endpoint string, headers http.
 		if resp != nil && resp.Body != nil {
 			_ = resp.Body.Close()
 		}
-		return nil, fmt.Errorf("connect to codex socket: %w", err)
+		return nil, fmt.Errorf("connect to socket: %w", err)
 	}
 	c.SetReadLimit(16 * 1024 * 1024)
 	return &websocketTransport{c}, nil

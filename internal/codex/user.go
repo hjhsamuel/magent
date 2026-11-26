@@ -39,7 +39,7 @@ func (s *UserRuntime) Close() {
 
 func (s *UserRuntime) connect(ctx context.Context) (*Runtime, error) {
 	if s.closed {
-		return nil, errors.New("codex server closed")
+		return nil, errors.New("server closed")
 	}
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
@@ -77,7 +77,7 @@ func (s *UserRuntime) OpenRuntime(ctx context.Context, threadID string) (*Runtim
 	defer s.mu.Unlock()
 
 	if s.closed {
-		return nil, errors.New("codex server closed")
+		return nil, errors.New("server closed")
 	}
 
 	if r := s.activeRuntimeLocked(threadID); r != nil {
