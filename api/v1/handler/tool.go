@@ -144,6 +144,16 @@ func (a *Api) AddTool(ctx *gin.Context) {
 	}
 }
 
+// DelTool 删除工具。
+// @Summary 删除工具
+// @Tags tool
+// @Produce json
+// @Param id path string true "工具 ID"
+// @Success 200 {object} utils.Response{data=string} "data 为 OK"
+// @Failure 400 {object} utils.Response "请求参数错误"
+// @Failure 401 {object} utils.Response "身份验证失败"
+// @Failure 500 {object} utils.Response "服务内部错误"
+// @Router /magent/v1/tool/{id} [delete]
 func (a *Api) DelTool(ctx *gin.Context) {
 	var req entities.DelToolReq
 	_ = ctx.ShouldBindUri(&req)

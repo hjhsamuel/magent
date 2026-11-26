@@ -160,9 +160,10 @@ func parseRuntimeMessage(e codex.Message) (*ringbuffer.Payload, *completedTurn, 
 		return &ringbuffer.Payload{
 			Type: ringbuffer.SSEventApprove,
 			Data: ringbuffer.ElicitationReq{
-				ID:     e.ID,
-				Method: string(codex.MethodMcpServerElicitation),
-				Schema: params.RequestedSchema,
+				ID:      e.ID,
+				Method:  string(codex.MethodMcpServerElicitation),
+				Content: params.Message,
+				Schema:  params.RequestedSchema,
 			},
 		}, nil, nil
 	default:

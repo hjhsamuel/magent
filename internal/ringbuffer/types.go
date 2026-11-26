@@ -58,9 +58,10 @@ type PermissionReq struct {
 }
 
 type ElicitationReq struct {
-	ID     json.RawMessage `json:"id"`
-	Method string          `json:"method"`
-	Schema json.RawMessage `json:"schema"`
+	ID      json.RawMessage `json:"id"`
+	Method  string          `json:"method"`
+	Content string          `json:"content"`
+	Schema  json.RawMessage `json:"schema"`
 }
 
 type ErrorEvent struct {

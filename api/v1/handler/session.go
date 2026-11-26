@@ -248,6 +248,16 @@ func (a *Api) GetTurns(ctx *gin.Context) {
 	})
 }
 
+// DelSession 接收删除会话请求。
+// @Summary 删除会话（尚未实现）
+// @Description 当前仅校验会话 ID，校验通过后返回空响应，会话仍然保留。
+// @Tags session
+// @Produce json
+// @Param id path string true "会话 ID"
+// @Success 200 "空响应"
+// @Failure 400 {object} utils.Response "请求参数错误"
+// @Failure 401 {object} utils.Response "身份验证失败"
+// @Router /magent/v1/session/{id} [delete]
 func (a *Api) DelSession(ctx *gin.Context) {
 	var req entities.DelSessionReq
 	_ = ctx.ShouldBindUri(&req)

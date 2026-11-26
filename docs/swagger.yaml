@@ -156,6 +156,31 @@ definitions:
 info:
   contact: {}
 paths:
+  /magent/v1/session/{id}:
+    delete:
+      description: 当前仅校验会话 ID，校验通过后返回空响应，会话仍然保留。
+      parameters:
+      - description: 会话 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 空响应
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "401":
+          description: 身份验证失败
+          schema:
+            $ref: '#/definitions/utils.Response'
+      summary: 删除会话（尚未实现）
+      tags:
+      - session
   /magent/v1/session/{id}/approval:
     post:
       consumes:
@@ -395,6 +420,41 @@ paths:
           schema:
             $ref: '#/definitions/utils.Response'
       summary: 添加工具
+      tags:
+      - tool
+  /magent/v1/tool/{id}:
+    delete:
+      parameters:
+      - description: 工具 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: data 为 OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.Response'
+            - properties:
+                data:
+                  type: string
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "401":
+          description: 身份验证失败
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "500":
+          description: 服务内部错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+      summary: 删除工具
       tags:
       - tool
   /magent/v1/tool/list:
