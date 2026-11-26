@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -321,8 +320,9 @@ func (s *Service) getWorkspaceConfig(addMcps, delMcps []*schema.Tool) (*codex.Co
 	}
 	for _, item := range addMcps {
 		info := codex.McpServer{
-			Url:         item.Url,
-			HttpHeaders: make(map[string]string),
+			Url:            item.Url,
+			HttpHeaders:    make(map[string]string),
+			ToolTimeoutSec: 1800,
 		}
 		if item.Token != "" {
 			info.HttpHeaders["Authorization"] = "Bearer " + item.Token

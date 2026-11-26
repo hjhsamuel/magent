@@ -38,6 +38,7 @@ type McpServer struct {
 	Url               string            `toml:"url"`
 	BearerTokenEnvVar string            `toml:"bearer_token_env_var"`
 	HttpHeaders       map[string]string `toml:"http_headers"`
+	ToolTimeoutSec    int               `toml:"tool_timeout_sec"`
 }
 
 type ForcedLoginKind string
