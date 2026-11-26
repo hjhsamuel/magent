@@ -29,9 +29,7 @@ func (s *Service) Listen(
 ) error {
 	ctx := c.Request.Context()
 
-	headers := make(http.Header)
-	headers.Set("Authorization", "Bearer "+s.wsToken)
-	cs, err := s.cm.CreateOrGet(auth.ID, headers)
+	cs, err := s.cm.CreateOrGet(auth.ID, s.getWebsocketHeaders())
 	if err != nil {
 		return err
 	}
@@ -64,7 +62,14 @@ func (s *Service) Listen(
 		if err != nil {
 			return err
 		}
-		obj, err := s.store.GetSession(ctx, bson.M{"_id": sid, "user": auth.ID})
+		obj, err := s.store.GetSession(
+			ctx,
+			bson.M{
+				"_id":    sid,
+				"user":   auth.ID,
+				"status": bson.M{"$ne": schema.SessionStateDeleted},
+			},
+		)
 		if err != nil {
 			return err
 		}
@@ -166,12 +171,16 @@ func (s *Service) Chat(
 	if err != nil {
 		return err
 	}
-	obj, err := s.store.GetSession(context.Background(), bson.M{"_id": sid, "user": auth.ID})
+	obj, err := s.store.GetSession(
+		context.Background(),
+		bson.M{
+			"_id":    sid,
+			"user":   auth.ID,
+			"status": bson.M{"$in": []schema.SessionState{schema.SessionStateInit, schema.SessionStateCompleted}},
+		},
+	)
 	if err != nil {
 		return err
-	}
-	if obj.Status == schema.SessionStateRunning {
-		return errors.New("session is running")
 	}
 	if obj.RunId == "" {
 		return errors.New("invalid session")
@@ -344,6 +353,7 @@ func (s *Service) generateSessionTitle(
 }
 
 func (s *Service) Approve(
+	auth *utils.Auth,
 	sessionId string,
 	id json.RawMessage,
 	accept bool,
@@ -361,13 +371,16 @@ func (s *Service) Approve(
 	if err != nil {
 		return err
 	}
-	obj, err := s.store.GetSession(context.Background(), bson.M{"_id": sid})
+	obj, err := s.store.GetSession(
+		context.Background(),
+		bson.M{
+			"_id":    sid,
+			"user":   auth.ID,
+			"status": schema.SessionStateRunning,
+		},
+	)
 	if err != nil {
 		return err
-	}
-	// 不在运行状态，说明轮次已结束
-	if obj.Status != schema.SessionStateRunning {
-		return errors.New("id not found")
 	}
 
 	server := s.cm.Get(obj.User)
@@ -394,4 +407,10 @@ func (s *Service) Approve(
 	default:
 		return errors.New("unknown method")
 	}
+}
+
+func (s *Service) getWebsocketHeaders() http.Header {
+	headers := make(http.Header)
+	headers.Set("Authorization", "Bearer "+s.wsToken)
+	return headers
 }

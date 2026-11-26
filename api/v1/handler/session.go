@@ -97,7 +97,8 @@ func (a *Api) Approval(ctx *gin.Context) {
 		return
 	}
 
-	err := a.srv.Approve(req.ID, req.Info.ID, req.Accept, req.Info.Method, req.Info.Params)
+	auth, _ := utils.GetAuth(ctx)
+	err := a.srv.Approve(auth, req.ID, req.Info.ID, req.Accept, req.Info.Method, req.Info.Params)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, utils.Response{
 			Code:    http.StatusInternalServerError,
@@ -245,4 +246,17 @@ func (a *Api) GetTurns(ctx *gin.Context) {
 		Code: http.StatusOK,
 		Data: rsp,
 	})
+}
+
+func (a *Api) DelSession(ctx *gin.Context) {
+	var req entities.DelSessionReq
+	_ = ctx.ShouldBindUri(&req)
+
+	if req.ID == "" {
+		ctx.JSON(http.StatusBadRequest, utils.Response{
+			Code:    http.StatusBadRequest,
+			Message: "invalid params: id is required",
+		})
+		return
+	}
 }

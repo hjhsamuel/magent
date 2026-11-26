@@ -226,6 +226,39 @@ func (s *UserRuntime) ThreadTurns(ctx context.Context, limit int, threadIDs ...s
 	return results, nil
 }
 
+// DeleteThreads deletes each distinct thread over one temporary connection.
+// It returns successfully deleted IDs in input order, stopping at the first error.
+func (s *UserRuntime) DeleteThreads(ctx context.Context, threadIDs ...string) ([]string, error) {
+	if len(threadIDs) == 0 {
+		return nil, nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r, err := s.connect(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	go func() {
+		for range r.Events() {
+		}
+	}()
+
+	seen := make(map[string]struct{}, len(threadIDs))
+	deleted := make([]string, 0, len(threadIDs))
+	for _, id := range threadIDs {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		if err = r.call(ctx, MethodThreadDelete, ThreadDeleteParams{ThreadID: id}, nil); err != nil {
+			return deleted, fmt.Errorf("delete thread %q: %w", id, err)
+		}
+		seen[id] = struct{}{}
+		deleted = append(deleted, id)
+	}
+	return deleted, nil
+}
+
 func NewUserRuntime(endpoint string, headers http.Header) (*UserRuntime, error) {
 	u, err := url.Parse(endpoint)
 	if err != nil || (u.Scheme != "ws" && u.Scheme != "wss") || u.Hostname() == "" || u.Fragment != "" || u.User != nil {

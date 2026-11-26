@@ -63,3 +63,7 @@ type Message struct {
 	Content   string `json:"content"`    // 消息
 	CreatedAt int64  `json:"created_at"` // 创建时间
 }
+
+type DelSessionReq struct {
+	ID string `uri:"id"` // 会话 id
+}

@@ -65,3 +65,21 @@ func (d *Store) FindSession(
 
 	return res, nil
 }
+
+func (d *Store) FindAndUpdateOneSession(
+	ctx context.Context,
+	filter bson.M,
+	update bson.M,
+	opts ...options.Lister[options.FindOneAndUpdateOptions],
+) (*schema.Session, error) {
+	result := d.getCollection(schema.SessionCollection).FindOneAndUpdate(ctx, filter, update, opts...)
+	if err := result.Err(); err != nil {
+		return nil, err
+	}
+
+	var obj schema.Session
+	if err := result.Decode(&obj); err != nil {
+		return nil, err
+	}
+	return &obj, nil
+}

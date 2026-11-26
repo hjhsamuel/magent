@@ -25,4 +25,5 @@ const (
 	SessionStateInit SessionState = iota
 	SessionStateRunning
 	SessionStateCompleted
+	SessionStateDeleted
 )

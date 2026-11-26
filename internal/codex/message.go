@@ -15,6 +15,7 @@ const (
 	MethodThreadStarted       Method = "thread/started"
 	MethodThreadResume        Method = "thread/resume"
 	MethodThreadRead          Method = "thread/read"
+	MethodThreadDelete        Method = "thread/delete"
 	MethodThreadTurnsList     Method = "thread/turns/list"
 	MethodThreadStatusChanged Method = "thread/status/changed"
 
@@ -293,6 +294,10 @@ type ThreadTurnsListResponse struct {
 type ThreadReadParams struct {
 	ThreadID     string `json:"threadId"`
 	IncludeTurns bool   `json:"includeTurns"`
+}
+
+type ThreadDeleteParams struct {
+	ThreadID string `json:"threadId"`
 }
 
 type PermissionGrantScope string

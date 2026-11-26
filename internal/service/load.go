@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/hjhsamuel/magent/internal/codex"
@@ -60,9 +59,7 @@ func (s *Service) load() error {
 }
 
 func (s *Service) syncSession(userId int, objs ...*schema.Session) error {
-	headers := make(http.Header)
-	headers.Set("Authorization", "Bearer "+s.wsToken)
-	ur, err := s.cm.CreateOrGet(userId, headers)
+	ur, err := s.cm.CreateOrGet(userId, s.getWebsocketHeaders())
 	if err != nil {
 		return err
 	}

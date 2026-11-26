@@ -14,4 +14,5 @@ func sessionRoute(api *handler.Api, g *gin.RouterGroup) {
 
 	group.GET("/list", api.GetSessionList)
 	group.GET("/:id/turns", api.GetTurns)
+	group.DELETE("/:id", api.DelSession)
 }

@@ -29,13 +29,10 @@ func (s *Service) CheckWorkspaceStatus(auth *utils.Auth) (corev1.PodPhase, error
 		return corev1.PodUnknown, err
 	}
 
-	headers := make(http.Header)
-	headers.Set("Authorization", "Bearer "+s.wsToken)
-
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 	defer cancel()
 
-	transport, err := codex.NewWebSocketConnContext(ctx, endpoint, headers)
+	transport, err := codex.NewWebSocketConnContext(ctx, endpoint, s.getWebsocketHeaders())
 	if err != nil {
 		//
 		ctx2, cancel2 := context.WithTimeout(context.Background(), time.Second*3)
@@ -232,15 +229,13 @@ func (s *Service) updateAllUserWorkspace(hasMcp, hasSkill bool) error {
 		return err
 	}
 	// 发送信号
-	headers := make(http.Header)
-	headers.Set("Authorization", "Bearer "+s.wsToken)
 	for _, item := range pods {
 		strId := strings.TrimPrefix(item.Name, "codex-")
 		userId, err := strconv.Atoi(strId)
 		if err != nil {
 			continue
 		}
-		ur, err := s.cm.CreateOrGet(userId, headers)
+		ur, err := s.cm.CreateOrGet(userId, s.getWebsocketHeaders())
 		if err != nil {
 			continue
 		}

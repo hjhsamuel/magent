@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"github.com/hjhsamuel/magent/api/utils"
 	"github.com/hjhsamuel/magent/internal/store/schema"
@@ -15,7 +16,8 @@ func (s *Service) GetSessionList(
 	limit int64,
 ) ([]*schema.Session, error) {
 	filter := bson.M{
-		"user": auth.ID,
+		"user":   auth.ID,
+		"status": bson.M{"$ne": schema.SessionStateDeleted},
 	}
 	if offset != "" {
 		id, err := bson.ObjectIDFromHex(offset)
@@ -57,4 +59,32 @@ func (s *Service) GetTurns(
 		filter,
 		options.Find().SetSort(bson.M{"_id": -1}).SetLimit(limit),
 	)
+}
+
+func (s *Service) DeleteSession(auth *utils.Auth, id string) error {
+	sid, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return err
+	}
+
+	obj, err := s.store.FindAndUpdateOneSession(
+		context.Background(),
+		bson.M{"_id": sid, "user": auth.ID, "status": schema.SessionStateCompleted},
+		bson.M{"$set": bson.M{"status": schema.SessionStateDeleted}},
+	)
+	if err != nil {
+		return err
+	}
+
+	ur, err := s.cm.CreateOrGet(auth.ID, s.getWebsocketHeaders())
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// 不关心是否真的删除成功
+	_, _ = ur.DeleteThreads(ctx, obj.RunId)
+	return nil
 }
