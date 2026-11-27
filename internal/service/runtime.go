@@ -198,7 +198,7 @@ func (s *Service) Chat(
 	cs := s.cm.Get(auth.ID)
 	if cs == nil {
 		producer.Close()
-		return err
+		return errors.New("open sse connection first")
 	}
 	r, err := cs.OpenRuntime(context.Background(), obj.RunId)
 	if err != nil {
