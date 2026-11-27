@@ -256,25 +256,33 @@ func (s *Service) turnStart(
 
 	wg := &sync.WaitGroup{}
 
-	wg.Add(1)
-	go s.solveRuntimeEvents(wg, sessionId, turnIndex, r, producer)
 	if turnIndex == 0 && content != "" {
 		wg.Add(1)
 		go s.generateSessionTitle(wg, sessionId, content, producer)
 	}
-
+	done, message := s.solveRuntimeEvents(r, producer)
+	// 确保标题生成结束
 	wg.Wait()
+
+	if done {
+		_ = s.store.TurnComplete(
+			context.Background(),
+			r.ThreadID(),
+			bson.M{"session": sessionId, "index": turnIndex},
+			message,
+		)
+		_, _ = producer.Write(ringbuffer.Payload{
+			Type: ringbuffer.SSEventComplete,
+			Data: message.Content,
+		})
+	}
+
 }
 
 func (s *Service) solveRuntimeEvents(
-	wg *sync.WaitGroup,
-	sessionId bson.ObjectID,
-	turnIndex uint64,
 	r *codex.Runtime,
 	producer *ringbuffer.Producer,
-) {
-	defer wg.Done()
-
+) (bool, *schema.Message) {
 	for {
 		select {
 		case e := <-r.Events():
@@ -306,20 +314,10 @@ func (s *Service) solveRuntimeEvents(
 					CreatedAt: time.Now(),
 				}
 			}
-			_ = s.store.TurnComplete(
-				context.Background(),
-				r.ThreadID(),
-				bson.M{"session": sessionId, "index": turnIndex},
-				message,
-			)
-			_, _ = producer.Write(ringbuffer.Payload{
-				Type: ringbuffer.SSEventComplete,
-				Data: message.Content,
-			})
 
-			return
+			return true, message
 		case <-r.Done():
-			return
+			return false, nil
 		}
 	}
 }

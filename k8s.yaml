@@ -113,7 +113,7 @@ spec:
               value: ""
             - name: MAGENT_RUNTIME_TOPIC_MODEL
               value: ""
-            - name: MAGENT_RUNTIME_IMAGE
+            - name: MAGENT_RUNTIME_POD_IMAGE
               value: "codex:0.169.0"
             - name: MAGENT_RUNTIME_POD_LABEL
               value: "agent=true"
