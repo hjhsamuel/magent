@@ -1,4 +1,16 @@
 definitions:
+  entities.AddCronJobReq:
+    properties:
+      content:
+        description: 消息
+        type: string
+      name:
+        description: 名称
+        type: string
+      spec:
+        description: 执行周期
+        type: string
+    type: object
   entities.AddToolReq:
     properties:
       description:
@@ -48,6 +60,40 @@ definitions:
     properties:
       status:
         description: 状态
+        type: string
+    type: object
+  entities.CronInfo:
+    properties:
+      content:
+        description: 输入信息
+        type: string
+      created_at:
+        description: 创建时间
+        type: integer
+      creator:
+        description: 创建者
+        type: integer
+      id:
+        description: 任务 id
+        type: string
+      name:
+        description: 名称
+        type: string
+      schedule:
+        description: 执行周期
+        type: string
+      status:
+        description: 状态。0：在线；1：离线
+        type: integer
+    type: object
+  entities.GetCronListRsp:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/entities.CronInfo'
+        type: array
+      offset:
+        description: 下次检索游标
         type: string
     type: object
   entities.GetSessionListRsp:
@@ -144,6 +190,24 @@ definitions:
           $ref: '#/definitions/entities.Message'
         type: array
     type: object
+  entities.UpdateCronJobReq:
+    properties:
+      content:
+        description: 输入信息
+        type: string
+      name:
+        description: 名称
+        type: string
+      spec:
+        description: 执行周期
+        type: string
+      status:
+        description: 状态。0：在线；1：离线
+        enum:
+        - 0
+        - 1
+        type: integer
+    type: object
   utils.Response:
     properties:
       code:
@@ -156,6 +220,168 @@ definitions:
 info:
   contact: {}
 paths:
+  /magent/v1/cron:
+    get:
+      parameters:
+      - description: 分页游标
+        in: query
+        name: offset
+        type: string
+      - description: 每页数量
+        in: query
+        maximum: 50
+        minimum: 1
+        name: limit
+        required: true
+        type: integer
+      - description: 状态，0 为在线，1 为离线
+        enum:
+        - 0
+        - 1
+        in: query
+        name: status
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entities.GetCronListRsp'
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "401":
+          description: 身份验证失败
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "500":
+          description: 服务内部错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+      summary: 获取定时任务列表
+      tags:
+      - cron
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 任务配置，name、spec 和 content 必填
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/entities.AddCronJobReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: data 为任务 ID
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.Response'
+            - properties:
+                data:
+                  type: string
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "401":
+          description: 身份验证失败
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "500":
+          description: 服务内部错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+      summary: 添加定时任务
+      tags:
+      - cron
+  /magent/v1/cron/{id}:
+    delete:
+      parameters:
+      - description: 任务 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: data 为 OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.Response'
+            - properties:
+                data:
+                  type: string
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "401":
+          description: 身份验证失败
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "500":
+          description: 服务内部错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+      summary: 删除定时任务
+      tags:
+      - cron
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: 任务 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 至少提供 name、spec、content、status 中的一项
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/entities.UpdateCronJobReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: data 为 OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.Response'
+            - properties:
+                data:
+                  type: string
+              type: object
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "401":
+          description: 身份验证失败
+          schema:
+            $ref: '#/definitions/utils.Response'
+        "500":
+          description: 服务内部错误
+          schema:
+            $ref: '#/definitions/utils.Response'
+      summary: 更新定时任务
+      tags:
+      - cron
   /magent/v1/session/{id}:
     delete:
       description: 当前仅校验会话 ID，校验通过后返回空响应，会话仍然保留。

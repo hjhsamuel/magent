@@ -32,9 +32,9 @@ type AddCronJobReq struct {
 }
 
 type UpdateCronJobReq struct {
-	ID      string  `uri:"id"`       // 任务 id
-	Name    *string `json:"name"`    // 名称
-	Spec    *string `json:"spec"`    // 执行周期
-	Content *string `json:"content"` // 输入信息
-	Status  *int    `json:"status"`  // 状态。0：在线；1：离线
+	ID      string  `uri:"id" swaggerignore:"true"` // 任务 id
+	Name    *string `json:"name"`                   // 名称
+	Spec    *string `json:"spec"`                   // 执行周期
+	Content *string `json:"content"`                // 输入信息
+	Status  *int    `json:"status" enums:"0,1"`     // 状态。0：在线；1：离线
 }

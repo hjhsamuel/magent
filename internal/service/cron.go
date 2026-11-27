@@ -47,7 +47,7 @@ func (s *Service) DeleteCronJob(auth *utils.Auth, id string) error {
 		return err
 	}
 
-	s.cron.RemoveCronJob(id)
+	s.cron.RemoveCronJob(cid.Hex())
 	return nil
 }
 
@@ -90,7 +90,68 @@ func (s *Service) UpdateCronJob(
 	content *string,
 	status *int,
 ) error {
-	// TODO
+	cid, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return err
+	}
+
+	set := bson.M{}
+	if name != nil {
+		set["name"] = *name
+	}
+	if spec != nil {
+		if _, err := s.cron.Parse(*spec); err != nil {
+			return err
+		}
+		set["schedule"] = *spec
+	}
+	if content != nil {
+		set["content"] = *content
+	}
+	if status != nil {
+		state := schema.CronState(*status)
+		if state != schema.CronStateOnline && state != schema.CronStateOffline {
+			return errors.New("invalid cron status")
+		}
+		set["status"] = state
+	}
+	if len(set) == 0 {
+		return errors.New("no cron fields to update")
+	}
+
+	previous, err := s.store.UpdateCronJob(
+		context.Background(),
+		bson.M{"_id": cid, "creator": auth.ID},
+		bson.M{"$set": set},
+	)
+	if err != nil {
+		return err
+	}
+
+	stateChanged := status != nil && schema.CronState(*status) != previous.Status
+	if stateChanged && schema.CronState(*status) == schema.CronStateOffline {
+		s.cron.RemoveCronJob(cid.Hex())
+		return nil
+	}
+
+	scheduleChanged := spec != nil && *spec != previous.Schedule
+	contentChanged := content != nil && *content != previous.Content
+	if !stateChanged && (previous.Status == schema.CronStateOffline || (!scheduleChanged && !contentChanged)) {
+		return nil
+	}
+
+	if spec != nil {
+		previous.Schedule = *spec
+	}
+	if content != nil {
+		previous.Content = *content
+	}
+	s.cron.RemoveCronJob(cid.Hex())
+	return s.cron.AddCronJob(cid.Hex(), previous.Schedule, &CronUserJob{
+		s:       s,
+		uid:     auth.ID,
+		content: previous.Content,
+	})
 }
 
 type CronService struct {

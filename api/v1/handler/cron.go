@@ -8,6 +8,18 @@ import (
 	"github.com/hjhsamuel/magent/api/v1/entities"
 )
 
+// GetCronList 获取定时任务列表。
+// @Summary 获取定时任务列表
+// @Tags cron
+// @Produce json
+// @Param offset query string false "分页游标"
+// @Param limit query int true "每页数量" minimum(1) maximum(50)
+// @Param status query int false "状态，0 为在线，1 为离线" Enums(0,1)
+// @Success 200 {object} utils.Response{data=entities.GetCronListRsp}
+// @Failure 400 {object} utils.Response "请求参数错误"
+// @Failure 401 {object} utils.Response "身份验证失败"
+// @Failure 500 {object} utils.Response "服务内部错误"
+// @Router /magent/v1/cron [get]
 func (a *Api) GetCronList(ctx *gin.Context) {
 	var req entities.GetCronListReq
 	_ = ctx.ShouldBindQuery(&req)
@@ -52,6 +64,16 @@ func (a *Api) GetCronList(ctx *gin.Context) {
 	})
 }
 
+// DeleteCronJob 删除定时任务。
+// @Summary 删除定时任务
+// @Tags cron
+// @Produce json
+// @Param id path string true "任务 ID"
+// @Success 200 {object} utils.Response{data=string} "data 为 OK"
+// @Failure 400 {object} utils.Response "请求参数错误"
+// @Failure 401 {object} utils.Response "身份验证失败"
+// @Failure 500 {object} utils.Response "服务内部错误"
+// @Router /magent/v1/cron/{id} [delete]
 func (a *Api) DeleteCronJob(ctx *gin.Context) {
 	var req entities.DeleteCronJobReq
 	_ = ctx.ShouldBindUri(&req)
@@ -79,6 +101,17 @@ func (a *Api) DeleteCronJob(ctx *gin.Context) {
 	}
 }
 
+// AddCronJob 添加定时任务。
+// @Summary 添加定时任务
+// @Tags cron
+// @Accept json
+// @Produce json
+// @Param body body entities.AddCronJobReq true "任务配置，name、spec 和 content 必填"
+// @Success 200 {object} utils.Response{data=string} "data 为任务 ID"
+// @Failure 400 {object} utils.Response "请求参数错误"
+// @Failure 401 {object} utils.Response "身份验证失败"
+// @Failure 500 {object} utils.Response "服务内部错误"
+// @Router /magent/v1/cron [post]
 func (a *Api) AddCronJob(ctx *gin.Context) {
 	var req entities.AddCronJobReq
 	_ = ctx.ShouldBindJSON(&req)
@@ -106,6 +139,18 @@ func (a *Api) AddCronJob(ctx *gin.Context) {
 	}
 }
 
+// UpdateCronJob 更新定时任务。
+// @Summary 更新定时任务
+// @Tags cron
+// @Accept json
+// @Produce json
+// @Param id path string true "任务 ID"
+// @Param body body entities.UpdateCronJobReq true "至少提供 name、spec、content、status 中的一项"
+// @Success 200 {object} utils.Response{data=string} "data 为 OK"
+// @Failure 400 {object} utils.Response "请求参数错误"
+// @Failure 401 {object} utils.Response "身份验证失败"
+// @Failure 500 {object} utils.Response "服务内部错误"
+// @Router /magent/v1/cron/{id} [put]
 func (a *Api) UpdateCronJob(ctx *gin.Context) {
 	var req entities.UpdateCronJobReq
 	_ = ctx.ShouldBindUri(&req)
