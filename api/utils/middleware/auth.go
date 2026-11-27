@@ -6,7 +6,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/hjhsamuel/magent/api/utils"
-	"github.com/hjhsamuel/magent/pkg/token"
 )
 
 func AuthMiddleware(ctx *gin.Context) {
@@ -23,26 +22,8 @@ func AuthMiddleware(ctx *gin.Context) {
 		return
 	}
 
-	t, claim, err := token.ParseJWT(content, utils.GetJwtSalt())
+	auth, err := utils.ParseAuth(content)
 	if err != nil {
-		ctx.AbortWithStatusJSON(http.StatusUnauthorized, &utils.Response{
-			Code:    http.StatusUnauthorized,
-			Message: "unauthorized",
-		})
-		return
-	}
-
-	auth := &utils.Auth{
-		Raw:   claim,
-		Token: t.Raw,
-	}
-	if v, ok := claim["id"].(float64); ok {
-		auth.ID = int(v)
-	}
-	if v, ok := claim["name"].(string); ok {
-		auth.Name = v
-	}
-	if auth.ID == 0 || auth.Name == "" {
 		ctx.AbortWithStatusJSON(http.StatusUnauthorized, &utils.Response{
 			Code:    http.StatusUnauthorized,
 			Message: "unauthorized",

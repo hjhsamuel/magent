@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/hjhsamuel/magent/pkg/token"
 )
 
 // ----------------------------------------- Auth ---------------------------------------- //
@@ -45,6 +46,25 @@ func GetAuth(ctx *gin.Context) (*Auth, error) {
 		return nil, errors.New("not exists")
 	}
 	return val.(*Auth), nil
+}
+
+func ParseAuth(raw string) (*Auth, error) {
+	t, claims, err := token.ParseJWT(raw, GetJwtSalt())
+	if err != nil {
+		return nil, err
+	}
+
+	id, _ := claims["id"].(float64)
+	name, _ := claims["name"].(string)
+	if int(id) == 0 || name == "" {
+		return nil, errors.New("missing user identity")
+	}
+	return &Auth{
+		ID:    int(id),
+		Name:  name,
+		Raw:   claims,
+		Token: t.Raw,
+	}, nil
 }
 
 // ------------------------------------------ Request --------------------------------------- //

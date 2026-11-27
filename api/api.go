@@ -2,6 +2,7 @@ package api
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/hjhsamuel/magent/api/mcp"
 	v1 "github.com/hjhsamuel/magent/api/v1"
 	_ "github.com/hjhsamuel/magent/docs"
 	"github.com/hjhsamuel/magent/internal/service"
@@ -15,6 +16,8 @@ func Route(srv *service.Service, e *gin.Engine) {
 	swaggerRoute(group)
 
 	v1.Route(srv, group)
+
+	mcp.Route(srv, group)
 }
 
 func swaggerRoute(e *gin.RouterGroup) {
