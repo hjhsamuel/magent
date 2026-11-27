@@ -336,17 +336,22 @@ func (s *Service) generateSessionTitle(
 	defer cancel()
 
 	title, err := s.topic.Complete(ctx, "", prompts.TopicPrompt, content)
-	if err == nil {
-		err = s.store.UpdateSession(
-			context.Background(),
-			bson.M{"_id": sid},
-			bson.M{"$set": bson.M{"name": title}},
-		)
-		_, _ = producer.Write(ringbuffer.Payload{
-			Type: ringbuffer.SSEventTitle,
-			Data: ringbuffer.CommonEvent{Data: title},
-		})
+	if err != nil {
+		if len(content) > 20 {
+			title = content[:18] + "..."
+		} else {
+			title = content
+		}
 	}
+	err = s.store.UpdateSession(
+		context.Background(),
+		bson.M{"_id": sid},
+		bson.M{"$set": bson.M{"name": title}},
+	)
+	_, _ = producer.Write(ringbuffer.Payload{
+		Type: ringbuffer.SSEventTitle,
+		Data: ringbuffer.CommonEvent{Data: title},
+	})
 	if err != nil {
 		logrus.WithError(err).WithField("session", sid.Hex()).Warn("could not generate session title")
 	}
